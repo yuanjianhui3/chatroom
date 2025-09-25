@@ -4,7 +4,7 @@
 #define CHAT_ADAPTER_H
 
 #include "lvgl/lvgl.h"
-#include "../dir_look/dir_look.h"
+#include "../../dir_look/dir_look.h"
 
 #ifdef __cplusplus
 extern "C" {
