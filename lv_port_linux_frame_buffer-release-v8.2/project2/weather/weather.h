@@ -3,6 +3,7 @@
 #ifndef _WEATHER_H_
 #define _WEATHER_H_
 
+#include <sys/ioctl.h>
 #include "../common/ext_ui_adapt.h"
 
 // 天气预报UI结构体

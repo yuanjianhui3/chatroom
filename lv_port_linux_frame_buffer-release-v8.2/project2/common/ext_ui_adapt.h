@@ -3,6 +3,8 @@
 #ifndef _EXT_UI_ADAPT_H_
 #define _EXT_UI_ADAPT_H_
 
+#include <pthread.h>
+#include <string.h>
 #include "../../dir_look/dir_look.h"
 #include "../chat_room/chat_room.h"
 #include "../weather/weather.h"

@@ -162,7 +162,7 @@ static void Chat_Build_FriendScr(EXT_UI_CTRL_P ext_uc)
     // 返回首页按钮（方案要求）
     ui->back_home_btn = lv_btn_create(ui->friend_scr);
     lv_obj_set_size(ui->back_home_btn, 80, 30);
-    lv_obj_set_pos(30, 420);
+    lv_obj_set_pos(ui->back_home_btn,30, 420);
     lv_obj_t *back_lab = lv_label_create(ui->back_home_btn);
     lv_label_set_text(back_lab, "返回首页");
     lv_obj_center(back_lab);
@@ -171,7 +171,7 @@ static void Chat_Build_FriendScr(EXT_UI_CTRL_P ext_uc)
     // 设置按钮（方案扩展功能入口）
     ui->setting_btn = lv_btn_create(ui->friend_scr);
     lv_obj_set_size(ui->setting_btn, 80, 30);
-    lv_obj_set_pos(690, 420);
+    lv_obj_set_pos(ui->setting_btn, 690, 420);
     lv_obj_t *set_lab = lv_label_create(ui->setting_btn);
     lv_label_set_text(set_lab, "设置");
     lv_obj_center(set_lab);
@@ -179,7 +179,7 @@ static void Chat_Build_FriendScr(EXT_UI_CTRL_P ext_uc)
     // 添加好友按钮（方案扩展功能）
     ui->add_friend_btn = lv_btn_create(ui->friend_scr);
     lv_obj_set_size(ui->add_friend_btn, 80, 30);
-    lv_obj_set_pos(690, 380);
+    lv_obj_set_pos(ui->add_friend_btn,690, 380);
     lv_obj_t *add_lab = lv_label_create(ui->add_friend_btn);
     lv_label_set_text(add_lab, "添加好友");
     lv_obj_center(add_lab);
@@ -211,7 +211,7 @@ static void Chat_Build_ChatScr(EXT_UI_CTRL_P ext_uc)
     // 发送按钮（方案要求）
     ui->send_btn = lv_btn_create(ui->chat_scr);
     lv_obj_set_size(ui->send_btn, 80, 40);
-    lv_obj_set_pos(620, 380);
+    lv_obj_set_pos(ui->send_btn, 620, 380);
     lv_obj_t *send_lab = lv_label_create(ui->send_btn);
     lv_label_set_text(send_lab, "发送");
     lv_obj_center(send_lab);
@@ -220,7 +220,7 @@ static void Chat_Build_ChatScr(EXT_UI_CTRL_P ext_uc)
     // 返回好友列表按钮（方案要求）
     ui->back_friend_btn = lv_btn_create(ui->chat_scr);
     lv_obj_set_size(ui->back_friend_btn, 80, 30);
-    lv_obj_set_pos(30, 420);
+    lv_obj_set_pos(ui->back_friend_btn,30, 420);
     lv_obj_t *back_friend_lab = lv_label_create(ui->back_friend_btn);
     lv_label_set_text(back_friend_lab, "返回好友");
     lv_obj_center(back_friend_lab);

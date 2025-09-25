@@ -94,13 +94,13 @@ static void Smart_Home_Build_Scr(EXT_UI_CTRL_P ext_uc)
     lv_label_set_text(smoke_title, "烟雾报警");
 
     ui->smoke_lab = lv_label_create(ui->home_scr);
-    lv_obj_set_pos(100, 240);
+    lv_obj_set_pos(ui->smoke_lab,100, 240);
     lv_obj_set_style_text_color(ui->smoke_lab, lv_color_hex(0xFFFFFF), LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui->smoke_lab, &lv_font_simsun_20, LV_STATE_DEFAULT);
     lv_label_set_text(ui->smoke_lab, "烟雾浓度：0 ppm");
 
     ui->alarm_state_lab = lv_label_create(ui->home_scr);
-    lv_obj_set_pos(250, 240);
+    lv_obj_set_pos(ui->alarm_state_lab,250, 240);
     lv_obj_set_style_text_color(ui->alarm_state_lab, lv_color_hex(0xFFFFFF), LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui->alarm_state_lab, &lv_font_simsun_20, LV_STATE_DEFAULT);
     lv_label_set_text(ui->alarm_state_lab, "报警状态：正常");
@@ -108,7 +108,7 @@ static void Smart_Home_Build_Scr(EXT_UI_CTRL_P ext_uc)
     // 远程呼叫区（方案要求）
     ui->call_btn = lv_btn_create(ui->home_scr);
     lv_obj_set_size(ui->call_btn, 120, 40);
-    lv_obj_set_pos(100, 320);
+    lv_obj_set_pos(ui->call_btn,100, 320);
     lv_obj_t *call_lab = lv_label_create(ui->call_btn);
     lv_label_set_text(call_lab, "远程呼叫");
     lv_obj_center(call_lab);
@@ -117,7 +117,7 @@ static void Smart_Home_Build_Scr(EXT_UI_CTRL_P ext_uc)
     // 返回首页按钮
     ui->back_btn = lv_btn_create(ui->home_scr);
     lv_obj_set_size(ui->back_btn, 80, 30);
-    lv_obj_set_pos(30, 420);
+    lv_obj_set_pos(ui->back_btn,30, 420);
     lv_obj_t *back_lab = lv_label_create(ui->back_btn);
     lv_label_set_text(back_lab, "返回首页");
     lv_obj_center(back_lab);

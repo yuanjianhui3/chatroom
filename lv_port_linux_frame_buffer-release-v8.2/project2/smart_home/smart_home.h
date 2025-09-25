@@ -3,6 +3,11 @@
 #ifndef _SMART_HOME_H_
 #define _SMART_HOME_H_
 
+//网络编程头文件
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include "../common/ext_ui_adapt.h"
 
 // 智能家居UI结构体

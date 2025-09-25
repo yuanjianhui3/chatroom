@@ -1,8 +1,6 @@
 //@file ext_ui_adapt.c   扩展UI适配实现
 
 #include "ext_ui_adapt.h"
-#include <pthread.h>
-#include <string.h>
 
 // 通用界面切换动画（上滑进入/下滑返回，贴合原有交互逻辑）
 void Ext_Scr_Switch(lv_obj_t *old_scr, lv_obj_t *new_scr, lv_dir_t dir)
