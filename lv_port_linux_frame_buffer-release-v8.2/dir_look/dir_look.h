@@ -156,9 +156,10 @@ struct Ui_Ctrl
     DEVICE_INFO_UI_P device_info_ui_p; // 20250903新增：设备信息界面指针
 
     GAME_2048_DATA_P game2048_data; // 20250905新增：重构2048游戏数据
+    
 };
 
-DBI_P Create_Node();//创建目录按钮头节点
+DBI_P Create_Node(void);//创建目录按钮头节点 修改20250925 14.00
 int  Dir_Look_Running(struct Ui_Ctrl * UC_P); //目录浏览器例程总接口
 int  Show_Start_Ui(struct Ui_Ctrl * UC_P); //显示第一个界面的函数
 int  Show_Dir_Ui(struct Ui_Ctrl * UC_P);   //显示第二个界面的函数

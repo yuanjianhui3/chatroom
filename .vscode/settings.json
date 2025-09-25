@@ -8,6 +8,8 @@
         "smart_home.h": "c",
         "frame_adapter.h": "c",
         "unistd.h": "c",
-        "socket.h": "c"
+        "socket.h": "c",
+        "chat_room.h": "c",
+        "iot_mqtt.h": "c"
     }
 }
