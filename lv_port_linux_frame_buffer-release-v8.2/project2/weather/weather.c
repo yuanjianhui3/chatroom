@@ -22,7 +22,7 @@
 static void Weather_Back_Cb(lv_event_t *e)
 {
     EXT_UI_CTRL_P ext_uc = (EXT_UI_CTRL_P)lv_event_get_user_data(e);
-    Weather_UI_P ui = ext_uc->weather_ui;
+    WEATHER_UI_P ui = ext_uc->weather_ui;
     Ext_Scr_Switch(ui->weather_scr, ext_uc->base_uc->start_ui_p->start_ui, LV_DIR_TOP);
 }
 
@@ -37,7 +37,7 @@ static void Temp_Check_Timer(lv_timer_t *timer)
 // 构建天气预报UI（最简实现，方案要求）
 static void Weather_Build_Scr(EXT_UI_CTRL_P ext_uc)
 {
-    Weather_UI_P ui = ext_uc->weather_ui;
+    WEATHER_UI_P ui = ext_uc->weather_ui;
     LV_FONT_DECLARE(lv_font_simsun_24);
 
     ui->weather_scr = lv_obj_create(NULL);
@@ -124,7 +124,7 @@ static int Weather_Http_Request(char *recv_buf, int buf_len)
 // 解析天气JSON数据
 static void Weather_Parse_Json(const char *json_str, EXT_UI_CTRL_P ext_uc)
 {
-    Weather_UI_P ui = ext_uc->weather_ui;
+    WEATHER_UI_P ui = ext_uc->weather_ui;
     cJSON *root = cJSON_Parse(json_str);
     if(root == NULL) return;
 
