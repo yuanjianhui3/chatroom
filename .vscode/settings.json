@@ -10,6 +10,7 @@
         "unistd.h": "c",
         "socket.h": "c",
         "chat_room.h": "c",
-        "iot_mqtt.h": "c"
+        "iot_mqtt.h": "c",
+        "errno.h": "c"
     }
 }
