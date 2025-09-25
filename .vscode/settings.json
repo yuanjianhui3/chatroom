@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "evdev.h": "c",
+        "lvgl.h": "c",
+        "fbdev.h": "c",
+        "lv_demos.h": "c",
+        "common_protocol.h": "c",
+        "smart_home.h": "c",
+        "frame_adapter.h": "c",
+        "unistd.h": "c"
+    }
+}
