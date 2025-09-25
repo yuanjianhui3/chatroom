@@ -67,7 +67,7 @@ static void Weather_Build_Scr(EXT_UI_CTRL_P ext_uc)
     // 返回首页按钮
     ui->back_btn = lv_btn_create(ui->weather_scr);
     lv_obj_set_size(ui->back_btn, 80, 30);
-    lv_obj_set_pos(30, 420);
+    lv_obj_set_pos(ui->back_btn, 30, 420);
     lv_obj_t *back_lab = lv_label_create(ui->back_btn);
     lv_label_set_text(back_lab, "返回首页");
     lv_obj_center(back_lab);
