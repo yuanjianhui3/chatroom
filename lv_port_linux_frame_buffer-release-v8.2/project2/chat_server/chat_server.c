@@ -206,6 +206,17 @@ static void *handle_client(void *arg) {
                 broadcast_msg(&msg, client->sockfd);
                 break;
             }
+            // ========== 新增：处理其他消息类型 ==========
+            case MSG_ACK:
+            case MSG_USER_LIST:
+            case MSG_ADD_FRIEND:
+            case MSG_SET_SIGNATURE:
+                // 这些消息类型是服务器发送的，客户端不会发送，所以不需要处理
+                printf("Received server-side message type: %d (ignored)\n", msg.type);
+                break;
+            default:
+                printf("Unknown message type: %d\n", msg.type);
+                break;
         }
         pthread_mutex_unlock(&data_mutex);
     }
