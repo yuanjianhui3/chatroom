@@ -75,6 +75,9 @@ int main(void)
         return -1;
     }
 
+    // 20250926新增：添加聊天室按钮到主界面
+    Dir_Look_Append_ChatBtn(&UC, UC.start_ui_p->start_ui);
+
 // ----------20250903新增：创建时间更新线程 ------ 09.34
     pthread_t time_thread;
     // 传入UC结构体指针，线程中通过该指针访问sys_time_lab标签
