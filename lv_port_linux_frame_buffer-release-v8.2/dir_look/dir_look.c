@@ -2,9 +2,6 @@
 
 #include "dir_look.h"
 
-// 20250925新增
-#include "../common/chat_adapter.h"
-
 // 【新增】20250905：2048游戏静态函数声明（仅当前.c文件可见，避免头文件冲突）
 static void game2048_init(GAME_2048_DATA_P game_data, struct Ui_Ctrl *UC_P);
 static void game2048_add_random(GAME_2048_DATA_P game_data);
