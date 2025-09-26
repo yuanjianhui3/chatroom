@@ -51,6 +51,6 @@ typedef struct {
 
 // 外部可调用函数
 void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home); // 初始化聊天室模块
-void Chat_Room_Exit(); // 退出聊天室并释放资源
+void Chat_Room_Exit(void); // 退出聊天室并释放资源
 
 #endif

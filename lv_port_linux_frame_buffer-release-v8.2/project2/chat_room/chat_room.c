@@ -10,8 +10,6 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#include "lvgl/src/core/lv_obj.h"
-
 // 云服务器配置（初学者需修改为自己的云服务器IP和端口）
 #define SERVER_IP "你的华为云服务器公网IP"
 #define SERVER_PORT 8888
@@ -28,6 +26,8 @@ static void reg_click(lv_event_t *e);
 static void do_register(lv_event_t *e);
 static void friend_click(lv_event_t *e);
 static void send_msg_click(lv_event_t *e);
+
+void Chat_Room_Exit(void);
 
 // -------------------------- 工具函数 --------------------------
 // 创建输入框（复用UI代码，减少冗余）
