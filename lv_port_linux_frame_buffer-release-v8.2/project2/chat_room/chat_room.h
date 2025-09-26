@@ -84,6 +84,8 @@ typedef struct {
     int msg_count;             // 消息数量
 } ChatRoom_t;
 
+ChatRoom_t *Chat_Get_Room_Handle(void);
+
 /**
  * 初始化聊天室
  * @param parent 父界面对象
@@ -162,7 +164,7 @@ void Chat_Show_Chat_Window(const char *friend_account);
 /**
  * 返回首页
  */
-void Chat_Back_To_Home(void);
+void Chat_Back_To_Home(lv_event_t *e);
 
 #ifdef __cplusplus
 } /* extern "C" */

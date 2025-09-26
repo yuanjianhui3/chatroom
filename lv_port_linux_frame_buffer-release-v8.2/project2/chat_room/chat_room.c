@@ -174,7 +174,7 @@ int Chat_Login(const char *account, const char *passwd)
     
     if (data.cmd == CMD_REPLY_OK) {
         // 登录成功，保存用户信息
-        pthread_mutex_mutex_lock(&g_chat_room.mutex);
+        pthread_mutex_lock(&g_chat_room.mutex);
         
         strncpy(g_chat_room.self.account, account, sizeof(g_chat_room.self.account)-1);
         strncpy(g_chat_room.self.nickname, data.user.nickname, sizeof(g_chat_room.self.nickname)-1);
@@ -217,7 +217,7 @@ int Chat_Send_Msg(const char *target, const char *msg)
     if (!target || !msg || !g_chat_room.logged_in) return -1;
     
     ChatData_t data;
-    memsetset(&data, 0, sizeof(ChatData_t));
+    memset(&data, 0, sizeof(ChatData_t));
     
     data.cmd = CMD_SEND_MSG;
     memcpy(&data.user, &g_chat_room.self, sizeof(UserInfo_t));
@@ -344,7 +344,7 @@ int Chat_Set_Avatar(const char *avatar)
 /**
  * 返回首页
  */
-void Chat_Back_To_Home(void)
+void Chat_Back_To_Home(lv_event_t *e)
 {
     // 隐藏聊天室相关界面
     if (g_chat_room.login_screen) {

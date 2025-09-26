@@ -3,13 +3,20 @@
 #include "ui.h"
 #include "chat_room.h"
 #include <stdio.h>
+#include "../common/chat_adapter.h"
+
+#include "../../lvgl/src/core/lv_obj_tree.h" // 显式包含子对象遍历函数的头文件
+
+// 通用删除函数
+static void auto_delete_obj(lv_timer_t *t) {
+    lv_obj_del(t->user_data);
+}
 
 // 输入框对象
 static lv_obj_t *account_input = NULL;
 static lv_obj_t *passwd_input = NULL;
 static lv_obj_t *nickname_input = NULL;
 static lv_obj_t *msg_input = NULL;
-static lv_obj_t *signature_input = NULL;
 
 // 获取聊天室全局对象
 static ChatRoom_t *Get_Chat_Room(void)
@@ -39,10 +46,9 @@ static void Login_Btn_Click(lv_event_t *e)
             lv_label_set_text(alert, "登录失败，账号或密码错误");
             lv_obj_align(alert, LV_ALIGN_CENTER, 0, 150);
             lv_obj_set_style_text_color(alert, lv_color_hex(0xff0000), LV_STATE_DEFAULT);
-            lv_obj_add_flag(alert, LV_OBJ_FLAG_AUTO_DELETE);
-            lv_timer_create([](lv_timer_t *t) {
-                lv_obj_del(t->user_data);
-            }, 2000, alert); // 2秒后自动删除提示
+
+            lv_timer_create(auto_delete_obj, 2000, alert);  // 与注册按钮的提示删除逻辑保持一致
+
         }
     }
 }
@@ -82,25 +88,18 @@ static void Register_Submit_Btn_Click(lv_event_t *e)
             lv_label_set_text(alert, "注册成功，请登录");
             lv_obj_align(alert, LV_ALIGN_CENTER, 0, 150);
             lv_obj_set_style_text_color(alert, lv_color_hex(0x00ff00), LV_STATE_DEFAULT);
-            lv_obj_add_flag(alert, LV_OBJ_FLAG_AUTO_DELETE);
-            
-            lv_timer_create([](lv_timer_t *t) {
-                ChatRoom_t *room = Get_Chat_Room();
-                if (room) {
-                    lv_obj_add_flag(room->register_screen, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_clear_flag(room->login_screen, LV_OBJ_FLAG_HIDDEN);
-                }
-            }, 1500, NULL); // 1.5秒后返回登录界面
+
+            lv_timer_create(auto_delete_obj, 2000, alert);  // 2000是延时毫秒数
+
         } else {
             // 注册失败
             lv_obj_t *alert = lv_label_create(chat_room->register_screen);
             lv_label_set_text(alert, "注册失败，请重试");
             lv_obj_align(alert, LV_ALIGN_CENTER, 0, 150);
             lv_obj_set_style_text_color(alert, lv_color_hex(0xff0000), LV_STATE_DEFAULT);
-            lv_obj_add_flag(alert, LV_OBJ_FLAG_AUTO_DELETE);
-            lv_timer_create([](lv_timer_t *t) {
-                lv_obj_del(t->user_data);
-            }, 2000, alert);
+
+            lv_timer_create(auto_delete_obj, 2000, alert);  // 2000是延时毫秒数
+
         }
     }
 }
@@ -496,12 +495,12 @@ void Chat_Refresh_Friend_List(void)
     if (!chat_room || !chat_room->friend_screen) return;
     
     // 清除现有好友项（保留标题和按钮）
-    lv_obj_t *child = lv_obj_get_child(chat_room->friend_screen, NULL);
+    lv_obj_t *child = lv_obj_get_child(chat_room->friend_screen, 0);  // 获取第一个子对象（索引0）
     while (child) {
-        lv_obj_t *next = lv_obj_get_child(chat_room->friend_screen, child);
+        lv_obj_t *next = lv_obj_get_next_sibling(child);  // 获取下一个兄弟对象
         // 保留标题、返回按钮和设置按钮
-        if (lv_obj_get_style_text_font(child, LV_STATE_DEFAULT) != &lv_font_montserrat_24 &&
-            lv_obj_get_size(child) != lv_obj_size_t{80, 30}) {
+        if ((lv_obj_get_style_text_font(child, LV_STATE_DEFAULT) != &lv_font_montserrat_24 &&
+            lv_obj_get_width(child) != 80) || lv_obj_get_height(child) != 30) {
             lv_obj_del(child);
         }
         child = next;
@@ -570,21 +569,22 @@ void Chat_Show_Chat_Window(const char *friend_account)
     // 更新聊天窗口标题
     pthread_mutex_lock(&chat_room->mutex);
     for (int i = 0; i < chat_room->friend_count; i++) {
-        if (strcmp(chat_room->friends[i].account, friend_account) == 0) {
-            lv_obj_t *title = lv_obj_get_child(chat_room->chat_screen, NULL);
+        if (strcmp(chat_room->friends[i].account, friend_account) == 0)
+        {
+            lv_obj_t *title = lv_obj_get_child(chat_room->chat_screen, 0);  //用 lv_obj_get_child 获取第一个子对象
             while (title) {
-                if (lv_obj_get_size(title) == lv_obj_size_t{lv_obj_get_width(chat_room->chat_screen), 50}) {
-                    lv_obj_t *title_label = lv_obj_get_child(title, NULL);
+                if (lv_obj_get_width(title) == lv_obj_get_width(chat_room->chat_screen) && lv_obj_get_height(title) == 50){
+                    lv_obj_t *title_label = lv_obj_get_child(title, 0);     //获取子对象索引0（第一个子对象）
                     while (title_label) {
                         if (lv_obj_get_style_text_color(title_label, LV_STATE_DEFAULT).full == 0xffffff) {
                             lv_label_set_text(title_label, chat_room->friends[i].nickname);
                             break;
                         }
-                        title_label = lv_obj_get_child(title, title_label);
+                        title_label = lv_obj_get_next_sibling(title_label);     //用 lv_obj_get_next_sibling 遍历兄弟对象
                     }
                     break;
                 }
-                title = lv_obj_get_child(chat_room->chat_screen, title);
+                title = lv_obj_get_next_sibling(title);
             }
             break;
         }
@@ -605,13 +605,13 @@ void Chat_Refresh_Chat_Window(void)
     
     // 找到消息显示区域
     lv_obj_t *msg_area = NULL;
-    lv_obj_t *child = lv_obj_get_child(chat_room->chat_screen, NULL);
+    lv_obj_t *child = lv_obj_get_child(chat_room->chat_screen, 0);  //获取第一个子对象（索引0）
     while (child) {
         if (lv_obj_get_style_bg_color(child, LV_STATE_DEFAULT).full == 0xf5f5f5) {
             msg_area = child;
             break;
         }
-        child = lv_obj_get_child(chat_room->chat_screen, child);
+        child = lv_obj_get_next_sibling(child);     //用 lv_obj_get_next_sibling 遍历
     }
     
     if (!msg_area) return;

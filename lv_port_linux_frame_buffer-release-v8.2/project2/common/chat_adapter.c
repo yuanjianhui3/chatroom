@@ -1,7 +1,7 @@
 //@file chat_adapter.c
 
 #include "chat_adapter.h"
-#include "../project2/chat_room/chat_room.h"
+#include "../chat_room/chat_room.h"
 #include <string.h>
 
 static lv_obj_t *chat_room_btn = NULL;
