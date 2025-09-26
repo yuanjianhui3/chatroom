@@ -10,6 +10,38 @@
 #include <pthread.h>
 #include <ctype.h>
 
+// ========== 新增的类型定义 ==========
+// 协议类型（区分不同请求/响应）
+typedef enum {
+    MSG_REGISTER = 1,    // 注册请求
+    MSG_LOGIN,           // 登录请求
+    MSG_ACK,             // 服务器应答（1成功/0失败）
+    MSG_GET_ONLINE_USER, // 获取在线用户列表
+    MSG_USER_LIST,       // 在线用户列表数据
+    MSG_SEND_MSG,        // 发送聊天消息
+    MSG_ADD_FRIEND,      // 添加好友
+    MSG_SET_SIGNATURE    // 设置个性签名
+} MsgType;
+
+// 用户信息结构体（注册/登录/在线用户共用）
+typedef struct {
+    char account[32];    // 账号（唯一）
+    char password[32];   // 密码
+    char nickname[32];   // 昵称
+    char ip[16];         // IP地址
+    int port;            // 端口号
+    char signature[64];  // 个性签名
+    char avatar[64];     // 头像路径（开发板本地路径）
+} UserInfo;
+
+// 网络消息结构体（统一传输格式）
+typedef struct {
+    MsgType type;        // 消息类型
+    UserInfo user;       // 用户信息
+    char content[256];   // 附加内容（消息/提示）
+} NetMsg;
+// ========== 类型定义结束 ==========
+
 #define SERVER_PORT 8888    // 服务器端口（需与客户端一致）
 #define MAX_CLIENT 10       // 最大连接数
 #define MAX_USER 100        // 最大注册用户数
