@@ -13,6 +13,7 @@
         "iot_mqtt.h": "c",
         "errno.h": "c",
         "lv_textarea.h": "c",
-        "lv_obj.h": "c"
+        "lv_obj.h": "c",
+        "chat_adapt.h": "c"
     }
 }

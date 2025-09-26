@@ -154,12 +154,42 @@ static void create_login_scr()
     lv_obj_align(back_btn, LV_ALIGN_BOTTOM_LEFT, 20, -20);
     lv_obj_t *back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, "返回首页");
+
+    // 连接服务器按钮
+    lv_obj_t *connect_btn = lv_btn_create(g_chat_ctrl->scr_login);
+    lv_obj_set_size(connect_btn, 100, 40);
+    lv_obj_align(connect_btn, LV_ALIGN_TOP_MID, 0, 250);
+    lv_obj_t *connect_label = lv_label_create(connect_btn);
+    lv_label_set_text(connect_label, "连接服务器");
+    lv_obj_add_event_cb(connect_btn, connect_server_click, LV_EVENT_CLICKED, NULL);
+
     lv_obj_add_event_cb(back_btn, back_to_home, LV_EVENT_CLICKED, g_chat_ctrl->scr_home);
 
     lv_obj_add_event_cb(login_btn, login_click, LV_EVENT_CLICKED, NULL);
 
     lv_obj_add_event_cb(reg_btn, reg_click, LV_EVENT_CLICKED, NULL);
 }
+
+// 连接服务器按钮回调
+static void connect_server_click(lv_event_t *e) {
+    if(g_chat_ctrl->sockfd >= 0) {
+        // 已经连接，提示用户
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "已经连接到服务器");
+        return;
+    }
+    
+    // 尝试连接服务器
+    g_chat_ctrl->sockfd = connect_server();
+    if(g_chat_ctrl->sockfd < 0) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "连接服务器失败！");
+        return;
+    }
+    
+    // 启动接收线程
+    pthread_create(&recv_thread_id, NULL, recv_server_msg, NULL);
+    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "连接服务器成功！");
+}
+
 
 // 注册按钮回调（发送注册请求）
 static void do_register(lv_event_t *e) 
@@ -186,7 +216,8 @@ static void do_register(lv_event_t *e)
 }
 
 // 创建注册界面
-static void create_register_scr() {
+static void create_register_scr() 
+{
     g_chat_ctrl->scr_register = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(g_chat_ctrl->scr_register, lv_color_hex(0xFFFFFF), 0);
 
@@ -223,7 +254,8 @@ static void create_register_scr() {
 }
 
 // 好友列表项点击（进入聊天窗口）
-static void friend_click(lv_event_t *e) {
+static void friend_click(lv_event_t *e) 
+{
     lv_obj_t *item = lv_event_get_current_target(e);
     
     lv_obj_t *label = lv_obj_get_child(item, 0); // 获取按钮中的第一个子对象（标签）
@@ -234,7 +266,8 @@ static void friend_click(lv_event_t *e) {
 }
 
 // 创建好友列表界面
-static void create_friend_scr() {
+static void create_friend_scr() 
+{
     g_chat_ctrl->scr_friend = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(g_chat_ctrl->scr_friend, lv_color_hex(0xFFFFFF), 0);
 
@@ -279,7 +312,8 @@ static void create_friend_scr() {
  }
 
 // 创建聊天窗口界面
-static void create_chat_scr() {
+static void create_chat_scr() 
+{
     g_chat_ctrl->scr_chat = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(g_chat_ctrl->scr_chat, lv_color_hex(0xFFFFFF), 0);
 
@@ -315,26 +349,36 @@ static void create_chat_scr() {
 
 // -------------------------- 网络接收线程 --------------------------
 // 处理服务器应答消息
-static void handle_server_msg(NetMsg *msg) {
-    switch(msg->type) {
-        case MSG_ACK: {
+static void handle_server_msg(NetMsg *msg) 
+{
+    switch(msg->type) 
+    {
+        case MSG_ACK: 
+        {
             // 注册/登录应答（content为"register"/"login"）
-            if(strcmp(msg->content, "register") == 0) {
-                if(msg->user.port == 1) { // ACK=1成功
+            if(strcmp(msg->content, "register") == 0) 
+            {
+                if(msg->user.port == 1) 
+                { // ACK=1成功
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册成功！请登录");
                     sleep(1);
                     lv_scr_load(g_chat_ctrl->scr_login);
-                } else {
+                } else 
+                {
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：账号已存在");
                 }
-            } else if(strcmp(msg->content, "login") == 0) {
-                if(msg->user.port == 1) { // ACK=1成功
+            } else if(strcmp(msg->content, "login") == 0)
+
+            {
+                if(msg->user.port == 1) 
+                { // ACK=1成功
                     strncpy(g_chat_ctrl->cur_account, msg->user.account, 31);
                     // 登录成功后请求在线用户列表
                     NetMsg get_user_msg = {.type = MSG_GET_ONLINE_USER};
                     send_to_server(&get_user_msg);
                     lv_scr_load(g_chat_ctrl->scr_friend);
-                } else {
+                } else 
+                {
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录失败：账号/密码错误");
                 }
             }
@@ -378,7 +422,8 @@ static void handle_server_msg(NetMsg *msg) {
 }
 
 // 接收服务器消息线程（避免阻塞UI）
-static void *recv_server_msg(void *arg) {
+static void *recv_server_msg(void *arg) 
+{
     NetMsg msg;
     while(1) {
         memset(&msg, 0, sizeof(msg));
@@ -397,21 +442,13 @@ static void *recv_server_msg(void *arg) {
 }
 
 // -------------------------- 模块初始化与退出 --------------------------
-void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home) {
+void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
+{
     // 初始化全局控制结构体
     g_chat_ctrl = (ChatCtrl *)malloc(sizeof(ChatCtrl));
     memset(g_chat_ctrl, 0, sizeof(ChatCtrl));
     g_chat_ctrl->uc = uc;
     g_chat_ctrl->scr_home = scr_home;
-
-    // 连接云服务器
-    g_chat_ctrl->sockfd = connect_server();
-    if(g_chat_ctrl->sockfd < 0) {
-        lv_obj_t *err_label = lv_label_create(scr_home);
-        lv_label_set_text(err_label, "连接服务器失败！");
-        lv_obj_align(err_label, LV_ALIGN_CENTER, 0, 0);
-        return;
-    }
 
     // 初始化互斥锁
     pthread_mutex_init(&msg_mutex, NULL);
@@ -422,14 +459,33 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home) {
     create_friend_scr();
     create_chat_scr();
 
-    // 启动接收线程
-    pthread_create(&recv_thread_id, NULL, recv_server_msg, NULL);
+    // 根据参数决定是否立即连接服务器
+    if(connect_now) 
+    {   // 连接云服务器
+        g_chat_ctrl->sockfd = connect_server();
+
+        if(g_chat_ctrl->sockfd < 0) 
+        {
+            lv_obj_t *err_label = lv_label_create(scr_home);
+            lv_label_set_text(err_label, "连接服务器失败！");
+            lv_obj_align(err_label, LV_ALIGN_CENTER, 0, 0);
+            return;
+        }
+
+        // 启动接收线程
+        pthread_create(&recv_thread_id, NULL, recv_server_msg, NULL);
+    } 
+    else 
+    {
+        g_chat_ctrl->sockfd = -1; // 标记为未连接状态
+    }
 
     // 进入登录界面
     lv_scr_load(g_chat_ctrl->scr_login);
 }
 
-void Chat_Room_Exit() {
+void Chat_Room_Exit() 
+{
     if(!g_chat_ctrl) return;
 
     // 关闭socket

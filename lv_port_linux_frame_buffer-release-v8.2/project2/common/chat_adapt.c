@@ -10,8 +10,8 @@
 // 聊天室按钮点击回调函数
 static void chat_btn_click(lv_event_t *e) {
     struct Ui_Ctrl *UC_P = (struct Ui_Ctrl *)lv_event_get_user_data(e);
-    // 进入聊天室界面
-    Chat_Room_Init(UC_P, UC_P->start_ui_p->start_ui);
+    // 直接进入聊天室登录界面，不立即连接服务器
+    Chat_Room_Init(UC_P, UC_P->start_ui_p->start_ui, false);
 }
 
 // 完全复用相册按钮的设置方式创建聊天室按钮
