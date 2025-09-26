@@ -21,13 +21,15 @@ static pthread_mutex_t msg_mutex;    // 线程安全互斥锁
 // 函数前置声明（符合模块化规范）
 static void login_click(lv_event_t *e);
 
-// 前置声明（所有内部函数都要加）
 static void reg_click(lv_event_t *e);
 static void do_register(lv_event_t *e);
 static void friend_click(lv_event_t *e);
 static void send_msg_click(lv_event_t *e);
 
 void Chat_Room_Exit(void);
+
+static void connect_server_click(lv_event_t *e);
+static void *recv_server_msg(void *arg);
 
 // -------------------------- 工具函数 --------------------------
 // 创建输入框（复用UI代码，减少冗余）
