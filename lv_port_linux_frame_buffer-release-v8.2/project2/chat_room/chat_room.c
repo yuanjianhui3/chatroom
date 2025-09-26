@@ -360,9 +360,20 @@ static void handle_server_msg(NetMsg *msg) {
             lv_obj_t *chat_content = lv_obj_get_child(g_chat_ctrl->scr_chat, 0);
             char new_msg[300];
             snprintf(new_msg, 300, "%s: %s\n%s", msg->user.nickname, msg->content, lv_textarea_get_text(chat_content));
-            lv_textarea_set_text(chat_content, new_msg);
+            lv_label_set_text(chat_content, new_msg); // 修改为使用标签
+
             break;
         }
+        case MSG_REGISTER:
+        case MSG_LOGIN:
+        case MSG_GET_ONLINE_USER:
+        case MSG_ADD_FRIEND:
+        case MSG_SET_SIGNATURE:
+            // 这些消息类型已经在其他分支处理或不需要处理
+            break;
+        default:
+            printf("未知消息类型: %d\n", msg->type);
+            break;        
     }
 }
 
