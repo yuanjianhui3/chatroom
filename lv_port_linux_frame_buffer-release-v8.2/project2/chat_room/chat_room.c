@@ -225,7 +225,10 @@ static void create_register_scr() {
 // 好友列表项点击（进入聊天窗口）
 static void friend_click(lv_event_t *e) {
     lv_obj_t *item = lv_event_get_current_target(e);
-    const char *friend_name = lv_label_get_text(lv_list_get_btn_label(item));
+    
+    lv_obj_t *label = lv_obj_get_child(item, 0); // 获取按钮中的第一个子对象（标签）
+    const char *friend_name = lv_label_get_text(label);
+
     printf("chat with %s\n", friend_name);
     lv_scr_load(g_chat_ctrl->scr_chat);
 }
@@ -280,12 +283,13 @@ static void create_chat_scr() {
     g_chat_ctrl->scr_chat = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(g_chat_ctrl->scr_chat, lv_color_hex(0xFFFFFF), 0);
 
-    // 聊天内容区域（文本区域，不可编辑）
-    lv_obj_t *chat_content = lv_textarea_create(g_chat_ctrl->scr_chat);
+    // 聊天内容区域（标签，不可编辑）
+    lv_obj_t *chat_content = lv_label_create(g_chat_ctrl->scr_chat);
     lv_obj_set_size(chat_content, 300, 300);
     lv_obj_align(chat_content, LV_ALIGN_TOP_MID, 0, 20);
-    lv_textarea_set_editable(chat_content, false);
-    lv_textarea_set_placeholder_text(chat_content, "聊天内容...");
+
+    lv_label_set_long_mode(chat_content, LV_LABEL_LONG_SCROLL); // 长文本滚动
+    lv_label_set_text(chat_content, "聊天内容..."); // 初始提示文本
 
     // 消息输入框
     lv_obj_t *msg_ta = create_textarea(g_chat_ctrl->scr_chat, "请输入消息");
@@ -339,7 +343,8 @@ static void handle_server_msg(NetMsg *msg) {
         case MSG_USER_LIST: {
             // 更新好友列表（格式：账号1:昵称1|账号2:昵称2|...）
             char *token = strtok(msg->content, "|");
-            lv_list_clear(g_chat_ctrl->friend_list); // 清空原有列表
+            lv_obj_clean(g_chat_ctrl->friend_list); // 清空原有列表
+
             while(token) {
                 char account[32], nickname[32];
                 sscanf(token, "%[^:]:%s", account, nickname);
