@@ -10,6 +10,8 @@
 #include <sys/time.h>
 #include "./dir_look/dir_look.h"
 
+#include "./project2/common/chat_adapt.h" // 20250926新增头文件引用
+
 // -------20250903新增：线程函数声明（必须在main函数前声明）------ 09.32
 // 线程函数：周期性获取开发板时间，更新第二个界面的时间标签
 void *sys_time_update_thread(void *arg);
@@ -72,7 +74,7 @@ int main(void)
         printf("例程启动失败！\n");
         return -1;
     }
-    
+
 // ----------20250903新增：创建时间更新线程 ------ 09.34
     pthread_t time_thread;
     // 传入UC结构体指针，线程中通过该指针访问sys_time_lab标签
