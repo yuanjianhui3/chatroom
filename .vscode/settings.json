@@ -11,6 +11,8 @@
         "socket.h": "c",
         "chat_room.h": "c",
         "iot_mqtt.h": "c",
-        "errno.h": "c"
+        "errno.h": "c",
+        "lv_textarea.h": "c",
+        "lv_obj.h": "c"
     }
 }

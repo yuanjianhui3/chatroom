@@ -42,7 +42,7 @@ static lv_obj_t *create_textarea(lv_obj_t *parent, const char *hint_text) {
 static lv_obj_t *create_label(lv_obj_t *parent, const char *text, lv_coord_t y) {
     lv_obj_t *label = lv_label_create(parent);
     lv_label_set_text(label, text);
-    lv_obj_align(label, LV_ALIGN_TOP_CENTER, 0, y);
+    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, y);
     return label;
 }
 
@@ -127,24 +127,24 @@ static void create_login_scr()
 
     // 账号输入框
     lv_obj_t *account_ta = create_textarea(g_chat_ctrl->scr_login, "请输入账号");
-    lv_obj_align(account_ta, LV_ALIGN_TOP_CENTER, 0, 80);
+    lv_obj_align(account_ta, LV_ALIGN_TOP_MID, 0, 80);
 
     // 密码输入框
     lv_obj_t *pwd_ta = create_textarea(g_chat_ctrl->scr_login, "请输入密码");
     lv_textarea_set_password_mode(pwd_ta, true);
-    lv_obj_align(pwd_ta, LV_ALIGN_TOP_CENTER, 0, 140);
+    lv_obj_align(pwd_ta, LV_ALIGN_TOP_MID, 0, 140);
 
     // 登录按钮
     lv_obj_t *login_btn = lv_btn_create(g_chat_ctrl->scr_login);
     lv_obj_set_size(login_btn, 100, 40);
-    lv_obj_align(login_btn, LV_ALIGN_TOP_CENTER, -60, 200);
+    lv_obj_align(login_btn, LV_ALIGN_TOP_MID, -60, 200);
     lv_obj_t *login_label = lv_label_create(login_btn);
     lv_label_set_text(login_label, "登录");
 
     // 注册按钮
     lv_obj_t *reg_btn = lv_btn_create(g_chat_ctrl->scr_login);
     lv_obj_set_size(reg_btn, 100, 40);
-    lv_obj_align(reg_btn, LV_ALIGN_TOP_CENTER, 60, 200);
+    lv_obj_align(reg_btn, LV_ALIGN_TOP_MID, 60, 200);
     lv_obj_t *reg_label = lv_label_create(reg_btn);
     lv_label_set_text(reg_label, "注册");
 
@@ -195,19 +195,19 @@ static void create_register_scr() {
 
     // 账号、密码、昵称输入框
     lv_obj_t *account_ta = create_textarea(g_chat_ctrl->scr_register, "请设置账号（唯一）");
-    lv_obj_align(account_ta, LV_ALIGN_TOP_CENTER, 0, 80);
+    lv_obj_align(account_ta, LV_ALIGN_TOP_MID, 0, 80);
 
     lv_obj_t *pwd_ta = create_textarea(g_chat_ctrl->scr_register, "请设置密码");
     lv_textarea_set_password_mode(pwd_ta, true);
-    lv_obj_align(pwd_ta, LV_ALIGN_TOP_CENTER, 0, 140);
+    lv_obj_align(pwd_ta, LV_ALIGN_TOP_MID, 0, 140);
 
     lv_obj_t *nick_ta = create_textarea(g_chat_ctrl->scr_register, "请设置昵称");
-    lv_obj_align(nick_ta, LV_ALIGN_TOP_CENTER, 0, 200);
+    lv_obj_align(nick_ta, LV_ALIGN_TOP_MID, 0, 200);
 
     // 注册按钮
     lv_obj_t *reg_btn = lv_btn_create(g_chat_ctrl->scr_register);
     lv_obj_set_size(reg_btn, 100, 40);
-    lv_obj_align(reg_btn, LV_ALIGN_TOP_CENTER, 0, 260);
+    lv_obj_align(reg_btn, LV_ALIGN_TOP_MID, 0, 260);
     lv_obj_t *reg_label = lv_label_create(reg_btn);
     lv_label_set_text(reg_label, "注册");
 
@@ -241,7 +241,7 @@ static void create_friend_scr() {
     // 好友列表（列表控件）
     g_chat_ctrl->friend_list = lv_list_create(g_chat_ctrl->scr_friend);
     lv_obj_set_size(g_chat_ctrl->friend_list, 300, 350);
-    lv_obj_align(g_chat_ctrl->friend_list, LV_ALIGN_TOP_CENTER, 0, 60);
+    lv_obj_align(g_chat_ctrl->friend_list, LV_ALIGN_TOP_MID, 0, 60);
 
     // 返回首页按钮
     lv_obj_t *home_btn = lv_btn_create(g_chat_ctrl->scr_friend);
@@ -283,13 +283,13 @@ static void create_chat_scr() {
     // 聊天内容区域（文本区域，不可编辑）
     lv_obj_t *chat_content = lv_textarea_create(g_chat_ctrl->scr_chat);
     lv_obj_set_size(chat_content, 300, 300);
-    lv_obj_align(chat_content, LV_ALIGN_TOP_CENTER, 0, 20);
+    lv_obj_align(chat_content, LV_ALIGN_TOP_MID, 0, 20);
     lv_textarea_set_editable(chat_content, false);
     lv_textarea_set_placeholder_text(chat_content, "聊天内容...");
 
     // 消息输入框
     lv_obj_t *msg_ta = create_textarea(g_chat_ctrl->scr_chat, "请输入消息");
-    lv_obj_align(msg_ta, LV_ALIGN_BOTTOM_CENTER, 0, -60);
+    lv_obj_align(msg_ta, LV_ALIGN_BOTTOM_MID, 0, -60);
 
     // 发送按钮
     lv_obj_t *send_btn = lv_btn_create(g_chat_ctrl->scr_chat);
