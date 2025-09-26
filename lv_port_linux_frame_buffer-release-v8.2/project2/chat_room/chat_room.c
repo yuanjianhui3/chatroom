@@ -10,6 +10,8 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
+#include "lvgl/src/core/lv_obj.h"
+
 // 云服务器配置（初学者需修改为自己的云服务器IP和端口）
 #define SERVER_IP "你的华为云服务器公网IP"
 #define SERVER_PORT 8888
@@ -17,6 +19,9 @@
 static ChatCtrl *g_chat_ctrl = NULL; // 全局控制指针
 static pthread_t recv_thread_id;     // 接收服务器消息线程
 static pthread_mutex_t msg_mutex;    // 线程安全互斥锁
+
+// 函数前置声明（符合模块化规范）
+static void login_click(lv_event_t *e);
 
 // 前置声明（所有内部函数都要加）
 static void reg_click(lv_event_t *e);
@@ -93,6 +98,24 @@ static void reg_click(lv_event_t *e) {
     lv_scr_load(g_chat_ctrl->scr_register);
 }
 
+// 登录按钮回调（发送登录请求）
+static void login_click(lv_event_t *e) 
+{
+    NetMsg msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = MSG_LOGIN;
+    // 获取输入框内容
+    lv_obj_t *account_ta = lv_obj_get_child(g_chat_ctrl->scr_login, 1); // 账号输入框（索引1）
+    lv_obj_t *pwd_ta = lv_obj_get_child(g_chat_ctrl->scr_login, 2);     // 密码输入框（索引2）
+    strncpy(msg.user.account, lv_textarea_get_text(account_ta), 31);
+    strncpy(msg.user.password, lv_textarea_get_text(pwd_ta), 31);
+    // 发送登录请求
+    if(send_to_server(&msg) < 0) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录失败：连接异常");
+        return;
+    }
+}
+
 // 创建登录界面
 static void create_login_scr() 
 {
@@ -133,56 +156,34 @@ static void create_login_scr()
     lv_label_set_text(back_label, "返回首页");
     lv_obj_add_event_cb(back_btn, back_to_home, LV_EVENT_CLICKED, g_chat_ctrl->scr_home);
 
-    // 登录按钮回调（发送登录请求）
-    static void login_click(lv_event_t *e) 
-    {
-        NetMsg msg;
-        memset(&msg, 0, sizeof(msg));
-        msg.type = MSG_LOGIN;
-
-        // 获取输入框内容
-        lv_obj_t *account_ta = lv_obj_get_child(g_chat_ctrl->scr_login, 1); // 账号输入框（索引1）
-        lv_obj_t *pwd_ta = lv_obj_get_child(g_chat_ctrl->scr_login, 2);     // 密码输入框（索引2）
-        strncpy(msg.user.account, lv_textarea_get_text(account_ta), 31);
-        strncpy(msg.user.password, lv_textarea_get_text(pwd_ta), 31);
-
-        // 发送登录请求
-        if(send_to_server(&msg) < 0) {
-            lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录失败：连接异常");
-            return;
-        }
-    }
     lv_obj_add_event_cb(login_btn, login_click, LV_EVENT_CLICKED, NULL);
 
     lv_obj_add_event_cb(reg_btn, reg_click, LV_EVENT_CLICKED, NULL);
 }
 
-    // 注册按钮回调（发送注册请求）
-    static void do_register(lv_event_t *e) 
-    {
-        NetMsg msg;
-        memset(&msg, 0, sizeof(msg));
-        msg.type = MSG_REGISTER;
-
-        // 获取输入框内容
-        lv_obj_t *account_ta = lv_obj_get_child(g_chat_ctrl->scr_register, 1);
-        lv_obj_t *pwd_ta = lv_obj_get_child(g_chat_ctrl->scr_register, 2);
-        lv_obj_t *nick_ta = lv_obj_get_child(g_chat_ctrl->scr_register, 3);
-        strncpy(msg.user.account, lv_textarea_get_text(account_ta), 31);
-        strncpy(msg.user.password, lv_textarea_get_text(pwd_ta), 31);
-        strncpy(msg.user.nickname, lv_textarea_get_text(nick_ta), 31);
-
-        // 填充本地IP（开发板IP，可通过ifconfig获取）
-        strncpy(msg.user.ip, "192.168.1.100", 15); // 初学者需修改为实际开发板IP
-        msg.user.port = 8000; // 固定本地端口
-
-        // 发送注册请求
-        if(send_to_server(&msg) < 0) {
-            lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：连接异常");
-            return;
-        }
-        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册中...");
+// 注册按钮回调（发送注册请求）
+static void do_register(lv_event_t *e) 
+{
+    NetMsg msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = MSG_REGISTER;
+    // 获取输入框内容
+    lv_obj_t *account_ta = lv_obj_get_child(g_chat_ctrl->scr_register, 1);
+    lv_obj_t *pwd_ta = lv_obj_get_child(g_chat_ctrl->scr_register, 2);
+    lv_obj_t *nick_ta = lv_obj_get_child(g_chat_ctrl->scr_register, 3);
+    strncpy(msg.user.account, lv_textarea_get_text(account_ta), 31);
+    strncpy(msg.user.password, lv_textarea_get_text(pwd_ta), 31);
+    strncpy(msg.user.nickname, lv_textarea_get_text(nick_ta), 31);
+    // 填充本地IP（开发板IP，可通过ifconfig获取）
+    strncpy(msg.user.ip, "192.168.1.100", 15); // 初学者需修改为实际开发板IP
+    msg.user.port = 8000; // 固定本地端口
+    // 发送注册请求
+    if(send_to_server(&msg) < 0) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：连接异常");
+        return;
     }
+    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册中...");
+}
 
 // 创建注册界面
 static void create_register_scr() {
@@ -221,6 +222,14 @@ static void create_register_scr() {
     lv_obj_add_event_cb(reg_btn, do_register, LV_EVENT_CLICKED, NULL);
 }
 
+// 好友列表项点击（进入聊天窗口）
+static void friend_click(lv_event_t *e) {
+    lv_obj_t *item = lv_event_get_current_target(e);
+    const char *friend_name = lv_label_get_text(lv_list_get_btn_label(item));
+    printf("chat with %s\n", friend_name);
+    lv_scr_load(g_chat_ctrl->scr_chat);
+}
+
 // 创建好友列表界面
 static void create_friend_scr() {
     g_chat_ctrl->scr_friend = lv_obj_create(NULL);
@@ -248,15 +257,23 @@ static void create_friend_scr() {
     lv_obj_align(set_btn, LV_ALIGN_BOTTOM_RIGHT, -20, -20);
     lv_obj_t *set_label = lv_label_create(set_btn);
     lv_label_set_text(set_label, "设置");
-
-    // 好友列表项点击（进入聊天窗口）
-    static void friend_click(lv_event_t *e) {
-        lv_obj_t *item = lv_event_get_current_target(e);
-        const char *friend_name = lv_label_get_text(lv_list_get_btn_label(item));
-        printf("chat with %s\n", friend_name);
-        lv_scr_load(g_chat_ctrl->scr_chat);
-    }
 }
+
+// 发送消息回调
+ static void send_msg_click(lv_event_t *e) 
+ {
+     NetMsg msg;
+     memset(&msg, 0, sizeof(msg));
+     msg.type = MSG_SEND_MSG;
+     strncpy(msg.user.account, g_chat_ctrl->cur_account, 31);
+     // 获取输入框内容
+     lv_obj_t *msg_ta = lv_obj_get_child(g_chat_ctrl->scr_chat, 1);
+     strncpy(msg.content, lv_textarea_get_text(msg_ta), 255);
+     // 发送消息
+     if(send_to_server(&msg) > 0) {
+         lv_textarea_set_text(msg_ta, ""); // 清空输入框
+     }
+ }
 
 // 创建聊天窗口界面
 static void create_chat_scr() {
@@ -289,22 +306,6 @@ static void create_chat_scr() {
     lv_label_set_text(back_label, "返回好友");
     lv_obj_add_event_cb(back_btn, back_to_friend, LV_EVENT_CLICKED, NULL);
 
-    // 发送消息回调
-    static void send_msg_click(lv_event_t *e) {
-        NetMsg msg;
-        memset(&msg, 0, sizeof(msg));
-        msg.type = MSG_SEND_MSG;
-        strncpy(msg.user.account, g_chat_ctrl->cur_account, 31);
-
-        // 获取输入框内容
-        lv_obj_t *msg_ta = lv_obj_get_child(g_chat_ctrl->scr_chat, 1);
-        strncpy(msg.content, lv_textarea_get_text(msg_ta), 255);
-
-        // 发送消息
-        if(send_to_server(&msg) > 0) {
-            lv_textarea_set_text(msg_ta, ""); // 清空输入框
-        }
-    }
     lv_obj_add_event_cb(send_btn, send_msg_click, LV_EVENT_CLICKED, NULL);
 }
 
