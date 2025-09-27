@@ -15,7 +15,9 @@ typedef enum {
     MSG_USER_LIST,       // 在线用户列表数据
     MSG_SEND_MSG,        // 发送聊天消息
     MSG_ADD_FRIEND,      // 添加好友
-    MSG_SET_SIGNATURE    // 设置个性签名
+    MSG_SET_SIGNATURE,    // 设置个性签名
+
+    MSG_GET_FRIEND_LIST  // 获取好友列表
 } MsgType;
 
 // 用户信息结构体（注册/登录/在线用户共用）
@@ -47,7 +49,9 @@ typedef struct {
     lv_obj_t *scr_chat;  // 聊天窗口界面
     lv_obj_t *friend_list; // 好友列表控件
     char cur_account[32];// 当前登录账号
-} ChatCtrl;
+
+    lv_obj_t *scr_setting; // 设置界面（个性签名/头像）
+} CHAT_CTRL, *CHAT_CTRL_P;
 
 // 外部可调用函数
 void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now); // 初始化聊天室模块
