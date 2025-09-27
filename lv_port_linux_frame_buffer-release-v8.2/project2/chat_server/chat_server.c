@@ -144,17 +144,28 @@ static void Handle_Register(NetMsg *msg, ClientInfo *client) {
         return;
     }
     // 保存注册用户
-    if(reg_user_count < MAX_USER) {
-        RegUser new_user;
-        memset(&new_user, 0, sizeof(new_user));
-        strncpy(new_user.account, msg->user.account, 31);
-        strncpy(new_user.password, msg->user.password, 31);
-        strncpy(new_user.nickname, msg->user.nickname, 31);
-        strncpy(new_user.signature, msg->user.signature, 63);
-        strncpy(new_user.avatar, msg->user.avatar, 63);
-        new_user.online = 0;
-        new_user.friend_cnt = 0;
-        reg_users[reg_user_count++] = new_user;
+    if(reg_user_count < MAX_USER) 
+    {
+        // 20250927新增：改为堆分配。栈RegUser new_user;
+        RegUser *new_user = malloc(sizeof(RegUser));
+        if (new_user == NULL) {
+            perror("malloc failed in Handle_Register");
+            Send_ACK(client->sockfd, "register", 0);
+            return;
+        }
+        memset(new_user, 0, sizeof(RegUser));
+
+        strncpy(new_user->account, msg->user.account, 31);
+        strncpy(new_user->password, msg->user.password, 31);
+        strncpy(new_user->nickname, msg->user.nickname, 31);
+        strncpy(new_user->signature, msg->user.signature, 63);
+        strncpy(new_user->avatar, msg->user.avatar, 63);
+        new_user->online = 0;
+        new_user->friend_cnt = 0;
+        reg_users[reg_user_count++] = *new_user;   // 复制到注册用户列表加*
+
+        free(new_user); // 20250927新增:释放堆内存
+
         Send_ACK(client->sockfd, "register", 1); // 成功ACK
         printf("注册成功：%s\n", msg->user.account);
     } else {
@@ -225,15 +236,25 @@ static void Handle_Set_Signature(NetMsg *msg, ClientInfo *client) {
 // -------------------------- 客户端处理线程 --------------------------
 static void *Handle_Client(void *arg) {
     ClientInfo *client = (ClientInfo *)arg;
-    NetMsg msg;
+
+    //20250927新增-------------------
+    NetMsg *msg = malloc(sizeof(NetMsg));  // 堆分配。栈NetMsg msg;
     int ret;
+    if (msg == NULL) {
+        perror("malloc failed");
+        close(client->sockfd);
+        free(client);
+        client_count--;
+        return NULL;
+    }
+    //------------------------------
 
     printf("new client connected: %s:%d\n", 
            inet_ntoa(client->addr.sin_addr), ntohs(client->addr.sin_port));//新客户连接
 
     while(1) {
-        memset(&msg, 0, sizeof(msg));
-        ret = recv(client->sockfd, &msg, sizeof(NetMsg), 0);
+        memset(msg, 0, sizeof(NetMsg));   //初始化堆上的结构体。栈memset(&msg, 0, sizeof(msg));
+        ret = recv(client->sockfd, msg, sizeof(NetMsg), 0); // 注意这里传指针
         if(ret <= 0) {
             printf("client disconnected: %s:%d\n", 
                    inet_ntoa(client->addr.sin_addr), ntohs(client->addr.sin_port));//客户断开连接
@@ -241,19 +262,23 @@ static void *Handle_Client(void *arg) {
         }
 
         pthread_mutex_lock(&data_mutex);
-        switch(msg.type) {
-            case MSG_REGISTER: Handle_Register(&msg, client); break;            //调用注册 消息处理函数
-            case MSG_LOGIN: Handle_Login(&msg, client); break;                  //调用登录 消息处理函数
+        switch(msg->type) // 访问时用->
+        { 
+            case MSG_REGISTER: Handle_Register(msg, client); break;            //调用注册 消息处理函数。传指针
+            case MSG_LOGIN: Handle_Login(msg, client); break;                  //调用登录 消息处理函数
             case MSG_GET_ONLINE_USER: Handle_Get_Online_User(client); break;    //调用在线用户 消息处理函数
-            case MSG_SEND_MSG: Broadcast_Msg(&msg, client->sockfd);break;       //调用广播聊天 消息处理函数
-            case MSG_ADD_FRIEND: Handle_Add_Friend(&msg, client); break;        //调用添加好友 消息处理函数
-            case MSG_SET_SIGNATURE: Handle_Set_Signature(&msg, client); break;  //调用个性签名 消息处理函数
+            case MSG_SEND_MSG: Broadcast_Msg(msg, client->sockfd);break;       //调用广播聊天 消息处理函数
+            case MSG_ADD_FRIEND: Handle_Add_Friend(msg, client); break;        //调用添加好友 消息处理函数
+            case MSG_SET_SIGNATURE: Handle_Set_Signature(msg, client); break;  //调用个性签名 消息处理函数
             default:
-                printf("Unknown message type: %d\n", msg.type);                 //未知消息类型
+                printf("Unknown message type: %d\n", msg->type);                 //未知消息类型
                 break;
         }
         pthread_mutex_unlock(&data_mutex);
     }
+
+    // 20250927新增：释放堆内存
+    free(msg);
 
     // 客户端断开，标记离线
     pthread_mutex_lock(&data_mutex);
