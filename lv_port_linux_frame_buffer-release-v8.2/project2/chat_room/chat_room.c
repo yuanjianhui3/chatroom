@@ -49,10 +49,6 @@ static lv_obj_t *Create_Label(lv_obj_t *parent, const char *text, lv_coord_t y);
 static int Send_To_Server(NetMsg *msg);
 static int Connect_Server(void);
 
-// 外部可调用函数
-void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now); // 初始化聊天室模块
-void Chat_Room_Exit(void); // 退出聊天室并释放资源
-
 // -------------------------- 工具函数 --------------------------
 
 // 20250927新增：动态获取开发板IP（适配eth0网卡，新手无需修改）- 14.30

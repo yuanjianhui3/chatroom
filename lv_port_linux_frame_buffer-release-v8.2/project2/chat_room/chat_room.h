@@ -54,3 +54,7 @@ typedef struct {
 } CHAT_CTRL, *CHAT_CTRL_P;
 
 #endif
+
+// 外部可调用函数
+void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now); // 初始化聊天室模块
+void Chat_Room_Exit(void); // 退出聊天室并释放资源

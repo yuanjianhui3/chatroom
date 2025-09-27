@@ -10,8 +10,14 @@
 #include <pthread.h>
 #include <ctype.h>
 
+#include <errno.h>
+
+#define SERVER_PORT 8888    // 20250927新增：需与客户端一致
+#define MAX_CLIENT 10       // 最大连接数
+#define MAX_USER 100        // 最大注册用户数
+
 // ========== 新增的类型定义 ==========
-// 协议类型（区分不同请求/响应）
+// 协议类型（区分不同请求/响应，与客户端一致）
 typedef enum {
     MSG_REGISTER = 1,    // 注册请求
     MSG_LOGIN,           // 登录请求
@@ -32,7 +38,12 @@ typedef struct {
     int port;            // 端口号
     char signature[64];  // 个性签名
     char avatar[64];     // 头像路径（开发板本地路径）
-} UserInfo;
+
+    int online;          // 20250927新增：是否在线（1=在线，0=离线）
+    char friends[20][32];// 好友账号列表
+    int friend_cnt;      // 好友数量
+
+} RegUser;
 
 // 网络消息结构体（统一传输格式）
 typedef struct {
