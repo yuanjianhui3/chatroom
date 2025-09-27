@@ -8,7 +8,7 @@
 #include "../chat_room/chat_room.h"  // 添加这行以包含 Chat_Room_Init 的声明
 
 // 聊天室按钮点击回调函数
-static void chat_btn_click(lv_event_t *e) 
+static void Chat_Btn_Click(lv_event_t *e) 
 {
     struct Ui_Ctrl *UC_P = (struct Ui_Ctrl *)lv_event_get_user_data(e);
     // 直接进入聊天室登录界面，不立即连接服务器
@@ -66,5 +66,5 @@ void Dir_Look_Append_ChatBtn(struct Ui_Ctrl *UC_P, lv_obj_t *scr_home)
     lv_label_set_text(chat_lab, "聊天室");
     
     // 7. 绑定点击事件
-    lv_obj_add_event_cb(chat_btn, chat_btn_click, LV_EVENT_CLICKED, UC_P);
+    lv_obj_add_event_cb(chat_btn, Chat_Btn_Click, LV_EVENT_CLICKED, UC_P);
 }

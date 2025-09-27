@@ -31,8 +31,6 @@ static void Do_Register(lv_event_t *e);
 static void Friend_Click(lv_event_t *e);
 static void Send_Msg_Click(lv_event_t *e);
 
-void Chat_Room_Exit(void);
-
 static void Connect_Server_Click(lv_event_t *e);
 static void *Recv_Server_Msg(void *arg);
 
@@ -43,6 +41,17 @@ static void Create_Setting_Scr(void); // 新增设置界面
 static void Add_Friend_Click(lv_event_t *e); // 新增添加好友
 static void Set_Signature_Click(lv_event_t *e); // 新增设置签名
 static char *Get_Local_IP(void); // 新增动态获取开发板IP
+
+static void Back_To_Home(lv_event_t *e);  // 20250927新增补充缺失声明
+static void Create_Login_Scr(void);  // 补充声明
+static lv_obj_t *Create_Textarea(lv_obj_t *parent, const char *hint_text);
+static lv_obj_t *Create_Label(lv_obj_t *parent, const char *text, lv_coord_t y);
+static int Send_To_Server(NetMsg *msg);
+static int Connect_Server(void);
+
+// 外部可调用函数
+void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now); // 初始化聊天室模块
+void Chat_Room_Exit(void); // 退出聊天室并释放资源
 
 // -------------------------- 工具函数 --------------------------
 
@@ -160,14 +169,14 @@ static void Login_Click(lv_event_t *e)
     msg.user.port = 8000; // 固定本地端口（新手无需修改）
     
     // 发送登录请求
-    if(send_to_server(&msg) < 0) {
+    if(Send_To_Server(&msg) < 0) {
         lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录失败：连接异常");
         return;
     }
 }
 
 // 创建登录界面（复用dir_look背景色：绿豆沙#C7EDCC）
-static void Create_Login_Scr() 
+static void Create_Login_Scr(void) 
 {
     g_chat_ctrl->scr_login = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(g_chat_ctrl->scr_login, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);
@@ -267,7 +276,7 @@ static void Do_Register(lv_event_t *e)
     strncpy(msg.user.avatar, "S:/avatar/default.png", 20); // 20250927新增：默认头像
 
     // 发送注册请求
-    if(send_to_server(&msg) < 0) {
+    if(Send_To_Server(&msg) < 0) {
         lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：连接异常");
         return;
     }
@@ -308,7 +317,7 @@ static void Create_Register_Scr()
     lv_obj_align(back_btn, LV_ALIGN_BOTTOM_LEFT, 20, -20);
     lv_obj_t *back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, "返回登录");
-    lv_obj_add_event_cb(back_btn, back_to_friend, LV_EVENT_CLICKED, NULL); // 复用返回好友列表回调
+    lv_obj_add_event_cb(back_btn, Back_To_Friend, LV_EVENT_CLICKED, NULL); // 复用返回好友列表回调
     lv_obj_set_style_text_font(back_btn, &lv_myfont_kai_20, LV_STATE_DEFAULT);//适配中文字体
 
     // 绑定事件
@@ -459,7 +468,7 @@ static void Create_Friend_Scr()
      lv_obj_t *msg_ta = lv_obj_get_child(g_chat_ctrl->scr_chat, 1);
      strncpy(msg.content, lv_textarea_get_text(msg_ta), 255);
      // 发送消息
-     if(send_to_server(&msg) > 0) {
+     if(Send_To_Server(&msg) > 0) {
          lv_textarea_set_text(msg_ta, ""); // 清空输入框
      }
  }
