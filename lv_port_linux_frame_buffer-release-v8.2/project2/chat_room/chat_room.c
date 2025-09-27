@@ -16,7 +16,7 @@
 #define SERVER_IP "你的云服务器公网IP"  // 如"121.43.xxx.xxx"
 #define SERVER_PORT 8888                // 需与服务器端口一致
 
-static CHAT_CTRL_P *g_chat_ctrl = NULL; // 全局控制指针
+static CHAT_CTRL_P g_chat_ctrl = NULL; // 全局控制指针
 static pthread_t recv_thread_id;     // 接收服务器消息线程
 static pthread_mutex_t msg_mutex;    // 线程安全互斥锁
 

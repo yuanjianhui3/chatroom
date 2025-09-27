@@ -24,6 +24,7 @@
         "limits": "c",
         "memory": "c",
         "new": "c",
-        "functional": "c"
+        "functional": "c",
+        "inet.h": "c"
     }
 }
