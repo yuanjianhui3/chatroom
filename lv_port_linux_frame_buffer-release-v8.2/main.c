@@ -76,7 +76,13 @@ int main(void)
     }
 
     // 20250926新增：添加聊天室按钮到主界面
+    if(UC.start_ui_p && UC.start_ui_p->start_ui) 
+    {
     Dir_Look_Append_ChatBtn(&UC, UC.start_ui_p->start_ui);
+    } else 
+    {
+        printf("错误：首页界面未正确初始化，无法添加聊天室按钮\n");
+    }    
 
 // ----------20250903新增：创建时间更新线程 ------ 09.34
     pthread_t time_thread;
