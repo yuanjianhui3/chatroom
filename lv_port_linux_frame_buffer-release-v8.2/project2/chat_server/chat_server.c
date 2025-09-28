@@ -106,8 +106,8 @@ static void Get_Online_User_Str(char *buf, int buf_len) {
     buf[0] = '\0';
     for(int i=0; i<client_count; i++) {
         if(clients[i].user.online) {
-            char temp[128];
-            snprintf(temp, 128, "%s:%s:%s|", clients[i].user.account, clients[i].user.nickname,clients[i].user.signature);
+            char temp[256];
+            snprintf(temp, 256, "%s:%s:%s|", clients[i].user.account, clients[i].user.nickname,clients[i].user.signature);
             strncat(buf, temp, buf_len - strlen(buf) - 1);
         }
     }
