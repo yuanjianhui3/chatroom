@@ -12,6 +12,7 @@
 #include <pthread.h>
 
 #include <ifaddrs.h>  // 动态获取IP所需头文件
+#include "../common/chat_adapt.h"
 
 // 服务器配置（新手需替换为华为云/阿里云IP和端口）
 #define SERVER_IP "8.134.200.90"  // 如"121.43.xxx.xxx"
@@ -782,7 +783,7 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
     } 
 
     // 进入登录界面
-    lv_scr_load(g_chat_ctrl->scr_login);
+    lv_scr_load(g_chat_ctrl->scr_friend);
 }
 
 void Chat_Room_Exit() 
@@ -793,7 +794,6 @@ void Chat_Room_Exit()
 
     // 1. 设置退出标志
     g_chat_ctrl->exiting = true;
-
     // 20250928新增修改2. 发送离线通知（如果有登录）
     if(strlen(g_chat_ctrl->cur_account) > 0) {
         NetMsg offline_msg;

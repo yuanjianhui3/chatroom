@@ -78,7 +78,7 @@ static void Hide_Keyboard_Task(lv_event_t *e) {
     }
 }
 
-static lv_obj_t *Create_Touch_Keyboard(lv_obj_t *parent_scr) 
+static lv_obj_t *Create_Touch_Keyboard(lv_obj_t *parent_scr)
 {
     static lv_obj_t *keyboard = NULL;
     if (keyboard == NULL) {

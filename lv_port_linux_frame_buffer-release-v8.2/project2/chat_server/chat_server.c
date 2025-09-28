@@ -287,7 +287,7 @@ static void *Handle_Client(void *arg) {
 
             case MSG_LOGOUT: 
             {      //20250928新增，退出消息处理
-                client->user.online = 0;
+                client->user.online = 0;    // 更新在线状态
                 RegUser *reg_user = Find_Reg_User(msg->user.account);
                 *reg_user = client->user;
                 printf("用户%s退出登录，更新离线状态\n", msg->user.account);

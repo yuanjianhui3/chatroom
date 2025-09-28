@@ -15,6 +15,6 @@ static void Chat_Btn_Click(lv_event_t *e);
 void Dir_Look_Bind_Textarea_Keyboard(lv_obj_t *textarea, lv_obj_t *parent_scr);
 
 static void Hide_Keyboard_Task(lv_event_t *e);
-
+static lv_obj_t *Create_Touch_Keyboard(lv_obj_t *parent_scr);//20250929新增
 
 #endif
