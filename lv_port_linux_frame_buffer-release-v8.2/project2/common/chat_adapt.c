@@ -37,7 +37,7 @@ void Dir_Look_Append_ChatBtn(struct Ui_Ctrl *UC_P, lv_obj_t *scr_home)
     lv_obj_set_size(chat_btn, album_w, album_h);  // 相同大小
     lv_obj_set_style_bg_opa(chat_btn, 0, 0);     // 相同透明度
     
-    // 4. 计算位置：相册按钮正下方，间距30px（与相册标签相同）
+    // 4. 计算位置：相册按钮正下方，间距30px
     lv_obj_set_pos(chat_btn, album_x, album_y + album_h + 30);
     
     // 5. 创建聊天室按钮图片（复用相册图片设置方式）
@@ -50,9 +50,9 @@ void Dir_Look_Append_ChatBtn(struct Ui_Ctrl *UC_P, lv_obj_t *scr_home)
     // 6. 创建聊天室按钮标签（复用相册标签设置方式）
     lv_obj_t *chat_lab = lv_label_create(scr_home);
     
-    // 计算标签位置：聊天室按钮下方30px（与相册标签相同）
-    lv_coord_t chat_lab_x = album_x;
-    lv_coord_t chat_lab_y = album_y + album_h + 30 + album_h + 30;
+    // 计算标签位置：聊天室按钮下方30px
+    lv_coord_t chat_lab_x = album_x + 4;
+    lv_coord_t chat_lab_y = album_y + album_h + album_h + 30;
     
     lv_obj_set_pos(chat_lab, chat_lab_x, chat_lab_y);
     

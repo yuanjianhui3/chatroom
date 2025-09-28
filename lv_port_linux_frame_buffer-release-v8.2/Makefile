@@ -1,6 +1,8 @@
 #
 # Makefile
 #
+CC_X86 = gcc  # 新增：x86编译器
+
 CC = arm-linux-gcc
 LVGL_DIR_NAME ?= lvgl
 LVGL_DIR ?= ${shell pwd}
@@ -48,5 +50,5 @@ SERVER_BIN = project2/chat_server/chat_server
 SERVER_SRC = project2/chat_server/chat_server.c
 
 server:
-	$(CC) $(CFLAGS) -o $(SERVER_BIN) $(SERVER_SRC) $(LDFLAGS)
+	$(CC_X86) $(CFLAGS) -o $(SERVER_BIN) $(SERVER_SRC) $(LDFLAGS)
 	@echo "Server compiled: $(SERVER_BIN)"

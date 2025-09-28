@@ -191,35 +191,39 @@ static void Create_Login_Scr(void)
 
     // 登录按钮
     lv_obj_t *login_btn = lv_btn_create(g_chat_ctrl->scr_login);
-    lv_obj_set_size(login_btn, 100, 40);
+    lv_obj_set_size(login_btn, 105, 30);
     lv_obj_align(login_btn, LV_ALIGN_TOP_MID, -60, 200);
     lv_obj_t *login_label = lv_label_create(login_btn);
     lv_label_set_text(login_label, "登录");
     lv_obj_set_style_text_font(login_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);//20250927新增，适配中文字体
+    lv_obj_center(login_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 注册按钮
     lv_obj_t *reg_btn = lv_btn_create(g_chat_ctrl->scr_login);
-    lv_obj_set_size(reg_btn, 100, 40);
+    lv_obj_set_size(reg_btn, 105, 30);
     lv_obj_align(reg_btn, LV_ALIGN_TOP_MID, 60, 200);
     lv_obj_t *reg_label = lv_label_create(reg_btn);
     lv_label_set_text(reg_label, "注册");
     lv_obj_set_style_text_font(reg_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);//20250927新增，适配中文字体
+    lv_obj_center(reg_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 返回首页按钮
     lv_obj_t *back_btn = lv_btn_create(g_chat_ctrl->scr_login);
-    lv_obj_set_size(back_btn, 80, 30);
+    lv_obj_set_size(back_btn, 105, 30);
     lv_obj_align(back_btn, LV_ALIGN_BOTTOM_LEFT, 20, -20);
     lv_obj_t *back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, "返回首页");
     lv_obj_set_style_text_font(back_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);//20250927新增，适配中文字体
+    lv_obj_center(back_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 连接服务器按钮
     lv_obj_t *connect_btn = lv_btn_create(g_chat_ctrl->scr_login);
-    lv_obj_set_size(connect_btn, 120, 40);
+    lv_obj_set_size(connect_btn, 110, 30);
     lv_obj_align(connect_btn, LV_ALIGN_TOP_MID, 0, 250);
     lv_obj_t *connect_label = lv_label_create(connect_btn);
     lv_label_set_text(connect_label, "连接服务器");
     lv_obj_set_style_text_font(connect_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);//20250927新增，适配中文字体
+    lv_obj_center(connect_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 绑定事件
     lv_obj_add_event_cb(connect_btn, Connect_Server_Click, LV_EVENT_CLICKED, NULL);
@@ -301,20 +305,22 @@ static void Create_Register_Scr()
 
     // 注册按钮
     lv_obj_t *reg_btn = lv_btn_create(g_chat_ctrl->scr_register);
-    lv_obj_set_size(reg_btn, 100, 40);
+    lv_obj_set_size(reg_btn, 105, 30);
     lv_obj_align(reg_btn, LV_ALIGN_TOP_MID, 0, 260);
     lv_obj_t *reg_label = lv_label_create(reg_btn);
     lv_label_set_text(reg_label, "注册");
     lv_obj_set_style_text_font(reg_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);//20250927新增，适配中文字体
+    lv_obj_center(reg_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 返回登录按钮
     lv_obj_t *back_btn = lv_btn_create(g_chat_ctrl->scr_register);
-    lv_obj_set_size(back_btn, 80, 30);
+    lv_obj_set_size(back_btn, 105, 30);
     lv_obj_align(back_btn, LV_ALIGN_BOTTOM_LEFT, 20, -20);
     lv_obj_t *back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, "返回登录");
     lv_obj_add_event_cb(back_btn, Back_To_Friend, LV_EVENT_CLICKED, NULL); // 复用返回好友列表回调
     lv_obj_set_style_text_font(back_btn, &lv_myfont_kai_20, LV_STATE_DEFAULT);//适配中文字体
+    lv_obj_center(back_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 绑定事件
     lv_obj_add_event_cb(back_btn, Back_To_Home, LV_EVENT_CLICKED, g_chat_ctrl->scr_login);//20250927新增
@@ -386,27 +392,30 @@ static void Create_Setting_Scr() {
 
     // 添加好友按钮
     lv_obj_t *add_btn = lv_btn_create(g_chat_ctrl->scr_setting);
-    lv_obj_set_size(add_btn, 100, 40);
+    lv_obj_set_size(add_btn, 105, 30);
     lv_obj_align(add_btn, LV_ALIGN_TOP_MID, -60, 200);
     lv_obj_t *add_label = lv_label_create(add_btn);
     lv_label_set_text(add_label, "添加好友");
     lv_obj_set_style_text_font(add_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+    lv_obj_center(add_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 设置签名按钮
     lv_obj_t *sign_btn = lv_btn_create(g_chat_ctrl->scr_setting);
-    lv_obj_set_size(sign_btn, 100, 40);
+    lv_obj_set_size(sign_btn, 105, 30);
     lv_obj_align(sign_btn, LV_ALIGN_TOP_MID, 60, 200);
     lv_obj_t *sign_label = lv_label_create(sign_btn);
     lv_label_set_text(sign_label, "设置签名");
     lv_obj_set_style_text_font(sign_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+    lv_obj_center(sign_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 返回好友列表按钮
     lv_obj_t *back_btn = lv_btn_create(g_chat_ctrl->scr_setting);
-    lv_obj_set_size(back_btn, 80, 30);
+    lv_obj_set_size(back_btn, 105, 30);
     lv_obj_align(back_btn, LV_ALIGN_BOTTOM_LEFT, 20, -20);
     lv_obj_t *back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, "返回好友");
     lv_obj_set_style_text_font(back_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+    lv_obj_center(back_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 绑定事件
     lv_obj_add_event_cb(back_btn, Back_To_Friend, LV_EVENT_CLICKED, NULL);
@@ -433,7 +442,7 @@ static void Create_Friend_Scr()
 
     // 返回首页按钮
     lv_obj_t *home_btn = lv_btn_create(g_chat_ctrl->scr_friend);
-    lv_obj_set_size(home_btn, 80, 30);
+    lv_obj_set_size(home_btn, 105, 30);
     lv_obj_align(home_btn, LV_ALIGN_BOTTOM_LEFT, 20, -20);
     lv_obj_t *home_label = lv_label_create(home_btn);
     lv_label_set_text(home_label, "返回首页");
@@ -441,7 +450,7 @@ static void Create_Friend_Scr()
 
     // 设置按钮（扩展功能入口）
     lv_obj_t *set_btn = lv_btn_create(g_chat_ctrl->scr_friend);
-    lv_obj_set_size(set_btn, 80, 30);
+    lv_obj_set_size(set_btn, 105, 30);
     lv_obj_align(set_btn, LV_ALIGN_BOTTOM_RIGHT, -20, -20);
     lv_obj_t *set_label = lv_label_create(set_btn);
     lv_label_set_text(set_label, "设置");
