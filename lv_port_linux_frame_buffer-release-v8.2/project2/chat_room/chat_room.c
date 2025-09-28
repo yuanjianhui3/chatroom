@@ -13,7 +13,7 @@
 #include <ifaddrs.h>  // 动态获取IP所需头文件
 
 // 服务器配置（新手需替换为华为云/阿里云IP和端口）
-#define SERVER_IP "你的云服务器公网IP"  // 如"121.43.xxx.xxx"
+#define SERVER_IP "8.134.200.90"  // 如"121.43.xxx.xxx"
 #define SERVER_PORT 8888                // 需与服务器端口一致
 
 static CHAT_CTRL_P g_chat_ctrl = NULL; // 全局控制指针

@@ -43,12 +43,12 @@ default: $(AOBJS) $(COBJS) $(MAINOBJ)
 	$(CC) -o $(BIN) $(MAINOBJ) $(AOBJS) $(COBJS) $(LDFLAGS) -llvgl -L.
 
 clean: 
-	rm -f $(BIN) $(AOBJS) $(COBJS) $(MAINOBJ)
+	rm -f $(BIN) $(AOBJS) $(COBJS) $(MAINOBJ) 
 
 # 新增：服务器端单独编译规则（执行make server即可生成服务器程序）
 SERVER_BIN = project2/chat_server/chat_server
 SERVER_SRC = project2/chat_server/chat_server.c
 
 server:
-	$(CC_X86) $(CFLAGS) -o $(SERVER_BIN) $(SERVER_SRC) $(LDFLAGS)
+	$(CC_X86) $(SERVER_SRC) -o $(SERVER_BIN) $(LDFLAGS)
 	@echo "Server compiled: $(SERVER_BIN)"
