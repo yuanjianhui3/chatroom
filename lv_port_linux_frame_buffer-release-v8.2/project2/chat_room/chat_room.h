@@ -53,6 +53,7 @@ typedef struct {
     char cur_account[32];// 当前登录账号
 
     lv_obj_t *scr_setting; // 设置界面（个性签名/头像）
+    bool exiting;   // 20250928新增退出标志
 } CHAT_CTRL, *CHAT_CTRL_P;
 
 #endif

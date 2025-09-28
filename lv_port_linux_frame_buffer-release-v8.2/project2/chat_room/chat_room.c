@@ -51,6 +51,7 @@ static int Connect_Server(void);
 
 static void Chat_Room_Exit_Task(lv_event_t *e); //20250928新增
 static void Logout_Btn_Task(lv_event_t *e);
+static bool is_thread_created = false; // 20250928新增：线程创建标志
 
 // -------------------------- 工具函数 --------------------------
 
@@ -264,6 +265,15 @@ static void Create_Login_Scr(void)
 // 20250928新增：退出按钮回调（释放所有资源）
 static void Chat_Room_Exit_Task(lv_event_t *e)
 {
+    printf("退出按钮被点击\n"); //20250928新增
+
+    // 20250928新增修复1：提前保存首页界面指针（避免释放后访问）
+    lv_obj_t *scr_home = NULL;
+    if (g_chat_ctrl) {
+        scr_home = g_chat_ctrl->scr_home; // 提前保存首页指针
+        printf("保存首页指针: %p\n", scr_home);
+    }
+    // -------------------
     // 发送离线通知（若已登录）
     if (g_chat_ctrl && g_chat_ctrl->sockfd >= 0 && strlen(g_chat_ctrl->cur_account) > 0) {
         NetMsg offline_msg;
@@ -271,9 +281,20 @@ static void Chat_Room_Exit_Task(lv_event_t *e)
         offline_msg.type = MSG_LOGOUT; // 新增消息类型：退出登录
         strncpy(offline_msg.user.account, g_chat_ctrl->cur_account, 31);
         Send_To_Server(&offline_msg);
+        printf("发送离线通知完成\n");
     }
-    Chat_Room_Exit(); // 调用原有释放函数
-    lv_scr_load(g_chat_ctrl->scr_home); // 返回首页
+    Chat_Room_Exit(); // 调用原有释放函数，释放聊天室资源（g_chat_ctrl 会被置空）
+    printf("Chat_Room_Exit 执行完成\n");
+
+    // 20250928新增修复2：使用提前保存的指针加载首页，避免访问 NULL
+    if (scr_home != NULL) {
+        printf("准备加载首页: %p\n", scr_home);
+        lv_scr_load(scr_home);
+        printf("首页加载完成\n");
+    }else {
+        printf("错误：首页指针为NULL\n");
+    }
+    //-----------------------------------------
 }
 
 // 连接服务器按钮回调
@@ -293,6 +314,7 @@ static void Connect_Server_Click(lv_event_t *e) {
     
     // 启动接收线程
     pthread_create(&recv_thread_id, NULL, Recv_Server_Msg, NULL);
+    is_thread_created = true; // 20250928新增
     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "连接服务器成功！请登录");
 }
 
@@ -680,19 +702,27 @@ static void Handle_Server_Msg(NetMsg *msg)
 static void *Recv_Server_Msg(void *arg) 
 {
     NetMsg msg;
-    while(1) {
+    while(g_chat_ctrl && !g_chat_ctrl->exiting)
+    {   //20250928修改
         memset(&msg, 0, sizeof(msg));
         int ret = recv(g_chat_ctrl->sockfd, &msg, sizeof(NetMsg), 0);
-        if(ret <= 0) {
-            perror("recv failed or server closed");
+        
+        if(ret <= 0 || !g_chat_ctrl || g_chat_ctrl->exiting) {
             break;
         }
 
         // 线程安全处理UI（LVGL需在主线程更新，此处简化为直接操作）
         pthread_mutex_lock(&msg_mutex);
-        lv_async_call(Lvgl_Update_UI, &msg); // 异步调用UI更新
+
+        // 再次检查，避免竞态条件
+        if(g_chat_ctrl && !g_chat_ctrl->exiting) 
+        {
+            lv_async_call(Lvgl_Update_UI, &msg); // 异步调用UI更新
+        }
         pthread_mutex_unlock(&msg_mutex);
     }
+    printf("接收线程安全退出\n");
+
     return NULL;
 }
 
@@ -731,6 +761,7 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
 
         // 启动接收线程
         pthread_create(&recv_thread_id, NULL, Recv_Server_Msg, NULL);
+        is_thread_created = true; // 20250928新增
     } 
 
     // 进入登录界面
@@ -740,24 +771,57 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
 void Chat_Room_Exit() 
 {
     if(!g_chat_ctrl) return;
-    // 关闭socket
-    if(g_chat_ctrl->sockfd >= 0) close(g_chat_ctrl->sockfd);
 
-    // 销毁线程
-    pthread_cancel(recv_thread_id);
-    pthread_join(recv_thread_id, NULL);
+    printf("开始退出聊天室...\n");  //20250928新增
 
+    // 1. 设置退出标志
+    g_chat_ctrl->exiting = true;
+
+    // 20250928新增修改2. 发送离线通知（如果有登录）
+    if(strlen(g_chat_ctrl->cur_account) > 0) {
+        NetMsg offline_msg;
+        memset(&offline_msg, 0, sizeof(offline_msg));
+        offline_msg.type = MSG_LOGOUT;
+        strncpy(offline_msg.user.account, g_chat_ctrl->cur_account, 31);
+        
+        // 在设置exiting标志后，但关闭socket前发送
+        if(g_chat_ctrl->sockfd >= 0) {
+            send(g_chat_ctrl->sockfd, &offline_msg, sizeof(NetMsg), 0);
+        }
+    }
+
+    // 关闭socket（先关闭，强制线程退出 recv 阻塞，触发接收线程退出）
+    if(g_chat_ctrl->sockfd >= 0) 
+    {
+        shutdown(g_chat_ctrl->sockfd, SHUT_RDWR);   //20250928新增修改
+        close(g_chat_ctrl->sockfd);
+        g_chat_ctrl->sockfd = -1;
+    }
+    // 4. 仅当线程已创建时才等待退出
+    if(is_thread_created) 
+    { // 20250928新增判断,解决段错误
+        pthread_join(recv_thread_id, NULL);// 等待线程完全退出
+        is_thread_created = false; // 重置标志
+        printf("接收线程已退出\n");
+    }
     // 销毁互斥锁
     pthread_mutex_destroy(&msg_mutex);
 
-    // 释放界面资源
-    lv_obj_del(g_chat_ctrl->scr_login);
-    lv_obj_del(g_chat_ctrl->scr_register);
-    lv_obj_del(g_chat_ctrl->scr_friend);
-    lv_obj_del(g_chat_ctrl->scr_chat);
-    lv_obj_del(g_chat_ctrl->scr_setting);
+    // 释放界面资源（20250928新增修改NULL检查）
+    if(g_chat_ctrl->scr_login && lv_obj_is_valid(g_chat_ctrl->scr_login)) 
+        lv_obj_del(g_chat_ctrl->scr_login);
+    if(g_chat_ctrl->scr_register && lv_obj_is_valid(g_chat_ctrl->scr_register))
+        lv_obj_del(g_chat_ctrl->scr_register);
+    if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) 
+        lv_obj_del(g_chat_ctrl->scr_friend);
+    if(g_chat_ctrl->scr_chat && lv_obj_is_valid(g_chat_ctrl->scr_chat))
+        lv_obj_del(g_chat_ctrl->scr_chat);
+    if(g_chat_ctrl->scr_setting && lv_obj_is_valid(g_chat_ctrl->scr_setting))
+        lv_obj_del(g_chat_ctrl->scr_setting);
 
-    // 释放内存
+    // 释放内存，全局控制结构体
     free(g_chat_ctrl);
     g_chat_ctrl = NULL;
+
+    printf("聊天室资源完全释放\n");
 }
