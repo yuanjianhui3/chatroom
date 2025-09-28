@@ -1,5 +1,6 @@
 //@file chat_room.c 聊天室客户端
 
+#include "../common/chat_adapt.h"  // 新增：引入函数声明
 #include "chat_room.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -202,11 +203,15 @@ static void Create_Login_Scr(void)
     // 账号输入框（索引1）
     lv_obj_t *account_ta = Create_Textarea(g_chat_ctrl->scr_login, "请输入账号");
     lv_obj_align(account_ta, LV_ALIGN_TOP_MID, 0, 80);
+    // 20250929新增：绑定键盘
+    Dir_Look_Bind_Textarea_Keyboard(account_ta, g_chat_ctrl->scr_login);
 
     // 密码输入框（索引2）
     lv_obj_t *pwd_ta = Create_Textarea(g_chat_ctrl->scr_login, "请输入密码");
     lv_textarea_set_password_mode(pwd_ta, true);
     lv_obj_align(pwd_ta, LV_ALIGN_TOP_MID, 0, 140);
+    // 20250929新增：绑定键盘
+    Dir_Look_Bind_Textarea_Keyboard(pwd_ta, g_chat_ctrl->scr_login);
 
     // 登录按钮
     lv_obj_t *login_btn = lv_btn_create(g_chat_ctrl->scr_login);
@@ -361,13 +366,19 @@ static void Create_Register_Scr()
     // 账号、密码、昵称输入框
     lv_obj_t *account_ta = Create_Textarea(g_chat_ctrl->scr_register, "请设置账号（唯一）");
     lv_obj_align(account_ta, LV_ALIGN_TOP_MID, 0, 80);// 索引1
+    // 20250929新增：绑定键盘
+    Dir_Look_Bind_Textarea_Keyboard(account_ta, g_chat_ctrl->scr_register);
 
     lv_obj_t *pwd_ta = Create_Textarea(g_chat_ctrl->scr_register, "请设置密码");
     lv_textarea_set_password_mode(pwd_ta, true);
     lv_obj_align(pwd_ta, LV_ALIGN_TOP_MID, 0, 140);// 索引2
+    // 20250929新增：绑定键盘
+    Dir_Look_Bind_Textarea_Keyboard(pwd_ta, g_chat_ctrl->scr_register);
 
     lv_obj_t *nick_ta = Create_Textarea(g_chat_ctrl->scr_register, "请设置昵称");
     lv_obj_align(nick_ta, LV_ALIGN_TOP_MID, 0, 200);// 索引3
+    // 20250929新增：绑定键盘
+    Dir_Look_Bind_Textarea_Keyboard(nick_ta, g_chat_ctrl->scr_register);
 
     // 注册按钮
     lv_obj_t *reg_btn = lv_btn_create(g_chat_ctrl->scr_register);
@@ -451,10 +462,14 @@ static void Create_Setting_Scr() {
     // 添加好友输入框（索引1）
     lv_obj_t *friend_ta = Create_Textarea(g_chat_ctrl->scr_setting, "请输入好友账号");
     lv_obj_align(friend_ta, LV_ALIGN_TOP_MID, 0, 80);
+    // 20250929新增：绑定键盘
+    Dir_Look_Bind_Textarea_Keyboard(friend_ta, g_chat_ctrl->scr_setting);
 
     // 个性签名输入框（索引2）
     lv_obj_t *sign_ta = Create_Textarea(g_chat_ctrl->scr_setting, "请输入个性签名");
     lv_obj_align(sign_ta, LV_ALIGN_TOP_MID, 0, 140);
+    // 20250929新增：绑定键盘
+    Dir_Look_Bind_Textarea_Keyboard(sign_ta, g_chat_ctrl->scr_setting);
 
     // 添加好友按钮
     lv_obj_t *add_btn = lv_btn_create(g_chat_ctrl->scr_setting);
@@ -590,6 +605,8 @@ static void Create_Chat_Scr()
     // 消息输入框（索引1）
     lv_obj_t *msg_ta = Create_Textarea(g_chat_ctrl->scr_chat, "请输入消息");
     lv_obj_align(msg_ta, LV_ALIGN_BOTTOM_MID, 0, -60);
+    // 20250929新增：绑定键盘
+    Dir_Look_Bind_Textarea_Keyboard(msg_ta, g_chat_ctrl->scr_chat);
 
     // 发送按钮
     lv_obj_t *send_btn = lv_btn_create(g_chat_ctrl->scr_chat);

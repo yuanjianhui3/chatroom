@@ -1,11 +1,9 @@
 //@file chat_adapt.c
 
-//@file chat_adapt.c
-
 #include "chat_adapt.h"
 #include "../../lvgl/lvgl.h"
 #include "../../dir_look/dir_look.h"
-#include "../chat_room/chat_room.h"  // 添加这行以包含 Chat_Room_Init 的声明
+#include "../chat_room/chat_room.h"  // 20250929新增以包含 Chat_Room_Init 的声明
 
 // 聊天室按钮点击回调函数
 static void Chat_Btn_Click(lv_event_t *e) 
@@ -68,3 +66,62 @@ void Dir_Look_Append_ChatBtn(struct Ui_Ctrl *UC_P, lv_obj_t *scr_home)
     // 7. 绑定点击事件
     lv_obj_add_event_cb(chat_btn, Chat_Btn_Click, LV_EVENT_CLICKED, UC_P);
 }
+
+// 20250928新增【静态辅助函数】创建全局唯一的触摸屏键盘（避免重复创建）
+
+// 20250929新增：静态回调函数
+static void Hide_Keyboard_Task(lv_event_t *e) {
+    lv_obj_t *parent_scr = lv_event_get_current_target(e);
+    lv_obj_t *keyboard = (lv_obj_t *)lv_obj_get_user_data(parent_scr); // 获取之前设置的键盘指针
+    if (keyboard != NULL) {
+        lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN); // 隐藏键盘
+    }
+}
+
+static lv_obj_t *Create_Touch_Keyboard(lv_obj_t *parent_scr) 
+{
+    static lv_obj_t *keyboard = NULL;
+    if (keyboard == NULL) {
+        // 1. 创建键盘实例（父容器为当前界面，确保随界面切换显示）
+        keyboard = lv_keyboard_create(parent_scr);
+        lv_obj_set_size(keyboard, lv_obj_get_width(parent_scr), 200); // 键盘高度200px，适配800*480屏幕
+        lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, 0); // 键盘固定在屏幕底部
+        
+        // 2. 设置键盘样式（复用项目绿豆沙背景色，适配原有UI风格）
+        lv_obj_set_style_bg_color(keyboard, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);
+        lv_obj_set_style_text_font(keyboard, &lv_myfont_kai_20, LV_STATE_DEFAULT); // 中英文字体统一
+        
+        // 3. 启用中英文切换（LVGL8.2默认支持，通过键盘左下角"ABC"按钮切换）
+        lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER); // 默认文本模式（支持英文）
+        
+        // 4. 点击键盘外区域隐藏键盘
+        lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN); // 默认隐藏
+        lv_obj_add_event_cb(parent_scr,Hide_Keyboard_Task, LV_EVENT_CLICKED, keyboard);
+        lv_obj_set_user_data(parent_scr, keyboard);     //20250929修改
+    }
+    return keyboard;
+}
+
+// 【静态辅助函数】输入框点击事件：弹出键盘
+static void Textarea_Btn_Task(lv_event_t *e) {
+    lv_obj_t *textarea = lv_event_get_current_target(e);
+    lv_obj_t *parent_scr = lv_obj_get_parent(textarea);
+    lv_obj_t *keyboard = Create_Touch_Keyboard(parent_scr);
+    
+    // 绑定输入框与键盘（输入内容自动同步到输入框）
+    lv_keyboard_set_textarea(keyboard, textarea);
+    // 显示键盘
+    lv_obj_clear_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
+}
+
+// 【对外函数】绑定输入框与触摸屏键盘（供chat_room.c调用）
+void Dir_Look_Bind_Textarea_Keyboard(lv_obj_t *textarea, lv_obj_t *parent_scr) {
+    if (textarea == NULL || parent_scr == NULL) return;
+    
+    // 1. 为输入框添加点击事件（点击弹出键盘）
+    lv_obj_add_event_cb(textarea, Textarea_Btn_Task, LV_EVENT_CLICKED, NULL);
+    
+    // 2. 优化输入框样式（确保触摸区域足够大，便于点击）
+    lv_obj_set_style_pad_all(textarea, 10, LV_STATE_DEFAULT); // 增加内边距，扩大触摸区域
+}
+
