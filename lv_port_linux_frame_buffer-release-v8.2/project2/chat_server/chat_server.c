@@ -155,11 +155,12 @@ static void Handle_Register(NetMsg *msg, ClientInfo *client) {
         }
         memset(new_user, 0, sizeof(RegUser));
 
-        strncpy(new_user->account, msg->user.account, 31);
-        strncpy(new_user->password, msg->user.password, 31);
-        strncpy(new_user->nickname, msg->user.nickname, 31);
-        strncpy(new_user->signature, msg->user.signature, 63);
-        strncpy(new_user->avatar, msg->user.avatar, 63);
+        snprintf(new_user->account, sizeof(new_user->account), "%s", msg->user.account);  //20250928修改
+        snprintf(new_user->password, sizeof(new_user->password), "%s", msg->user.password);
+        snprintf(new_user->nickname, sizeof(new_user->nickname), "%s", msg->user.nickname);
+        snprintf(new_user->signature, sizeof(new_user->signature), "%s", msg->user.signature);
+        snprintf(new_user->avatar, sizeof(new_user->avatar), "%s", msg->user.avatar);
+
         new_user->online = 0;
         new_user->friend_cnt = 0;
         reg_users[reg_user_count++] = *new_user;   // 复制到注册用户列表加*
@@ -215,7 +216,11 @@ static void Handle_Add_Friend(NetMsg *msg, ClientInfo *client) {
         }
     }
     // 添加好友
-    strncpy(client->user.friends[client->user.friend_cnt++], target->account, 31);
+
+    // 20250928修改：先复制，friend_cnt 稍后再增加
+    snprintf(client->user.friends[client->user.friend_cnt], sizeof(client->user.friends[0]), "%s", target->account);
+    client->user.friend_cnt++; // 复制成功后，再增加计数
+
     // 更新注册用户的好友列表
     RegUser *reg_user = Find_Reg_User(client->user.account);
     *reg_user = client->user;
@@ -224,8 +229,9 @@ static void Handle_Add_Friend(NetMsg *msg, ClientInfo *client) {
 }
 
 static void Handle_Set_Signature(NetMsg *msg, ClientInfo *client) {
-    // 更新签名
-    strncpy(client->user.signature, msg->user.signature, 63);
+    // 20250928修改更新签名
+    snprintf(client->user.signature, sizeof(client->user.signature), "%s", msg->user.signature);
+
     // 更新注册用户
     RegUser *reg_user = Find_Reg_User(client->user.account);
     *reg_user = client->user;
