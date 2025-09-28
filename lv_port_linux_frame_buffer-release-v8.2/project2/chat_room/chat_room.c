@@ -679,7 +679,7 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
     } 
 
     // 进入登录界面
-    lv_scr_load(g_chat_ctrl->scr_login);
+    lv_scr_load(g_chat_ctrl->scr_friend);
 }
 
 void Chat_Room_Exit() 
