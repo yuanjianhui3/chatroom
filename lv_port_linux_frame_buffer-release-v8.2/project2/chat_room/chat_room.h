@@ -17,7 +17,9 @@ typedef enum {
     MSG_ADD_FRIEND,      // 添加好友
     MSG_SET_SIGNATURE,    // 设置个性签名
 
-    MSG_GET_FRIEND_LIST  // 获取好友列表
+    MSG_GET_FRIEND_LIST,  // 获取好友列表
+
+    MSG_LOGOUT = 9       // 20250928新增：退出登录
 } MsgType;
 
 // 用户信息结构体（注册/登录/在线用户共用）

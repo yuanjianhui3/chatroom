@@ -26,7 +26,10 @@ typedef enum {
     MSG_USER_LIST,       // 在线用户列表数据
     MSG_SEND_MSG,        // 发送聊天消息
     MSG_ADD_FRIEND,      // 添加好友
-    MSG_SET_SIGNATURE    // 设置个性签名
+    MSG_SET_SIGNATURE,    // 设置个性签名
+
+    MSG_LOGOUT = 9  // 20250928新增退出登录
+
 } MsgType;
 
 // 用户信息结构体（注册/登录/在线用户共用）
@@ -168,7 +171,8 @@ static void Handle_Register(NetMsg *msg, ClientInfo *client) {
         free(new_user); // 20250927新增:释放堆内存
 
         Send_ACK(client->sockfd, "register", 1); // 成功ACK
-        printf("注册成功：%s\n", msg->user.account);
+        printf("注册成功：账号=%s, 昵称=%s, IP=%s, 端口=%d\n",
+            msg->user.account, msg->user.nickname, msg->user.ip, msg->user.port);//20250928修改
     } else {
         Send_ACK(client->sockfd, "register", 0);
     }
@@ -199,6 +203,10 @@ static void Handle_Get_Online_User(ClientInfo *client) {
     user_msg.type = MSG_USER_LIST;
     Get_Online_User_Str(user_msg.content, 256);
     send(client->sockfd, &user_msg, sizeof(user_msg), 0);
+
+    printf("客户端%s请求在线用户列表，列表：%s\n",
+        client->user.account, user_msg.content); // 20250928新增log
+
 }
 
 static void Handle_Add_Friend(NetMsg *msg, ClientInfo *client) {
@@ -276,6 +284,15 @@ static void *Handle_Client(void *arg) {
             case MSG_SEND_MSG: Broadcast_Msg(msg, client->sockfd);break;       //调用广播聊天 消息处理函数
             case MSG_ADD_FRIEND: Handle_Add_Friend(msg, client); break;        //调用添加好友 消息处理函数
             case MSG_SET_SIGNATURE: Handle_Set_Signature(msg, client); break;  //调用个性签名 消息处理函数
+
+            case MSG_LOGOUT: 
+            {      //20250928新增，退出消息处理
+                client->user.online = 0;
+                RegUser *reg_user = Find_Reg_User(msg->user.account);
+                *reg_user = client->user;
+                printf("用户%s退出登录，更新离线状态\n", msg->user.account);
+                break;
+            }
             default:
                 printf("Unknown message type: %d\n", msg->type);                 //未知消息类型
                 break;

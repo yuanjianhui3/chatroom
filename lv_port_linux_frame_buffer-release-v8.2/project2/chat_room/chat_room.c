@@ -49,6 +49,9 @@ static lv_obj_t *Create_Label(lv_obj_t *parent, const char *text, lv_coord_t y);
 static int Send_To_Server(NetMsg *msg);
 static int Connect_Server(void);
 
+static void Chat_Room_Exit_Task(lv_event_t *e); //20250928新增
+static void Logout_Btn_Task(lv_event_t *e);
+
 // -------------------------- 工具函数 --------------------------
 
 // 20250927新增：动态获取开发板IP（适配eth0网卡，新手无需修改）- 14.30
@@ -240,11 +243,37 @@ static void Create_Login_Scr(void)
     lv_obj_set_style_text_font(connect_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);//20250927新增，适配中文字体
     lv_obj_center(connect_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
+    // 20250928新增：退出按钮（释放所有聊天室资源）
+    lv_obj_t *exit_btn = lv_btn_create(g_chat_ctrl->scr_login);
+    lv_obj_set_size(exit_btn, 105, 30);
+    lv_obj_align(exit_btn, LV_ALIGN_BOTTOM_LEFT, 130, -20); // 返回首页按钮右侧
+    lv_obj_t *exit_label = lv_label_create(exit_btn);
+    lv_label_set_text(exit_label, "退出");
+    lv_obj_set_style_text_font(exit_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+    lv_obj_center(exit_label);
+    // 绑定退出回调
+    lv_obj_add_event_cb(exit_btn, Chat_Room_Exit_Task, LV_EVENT_CLICKED, NULL);
+
     // 绑定事件
     lv_obj_add_event_cb(connect_btn, Connect_Server_Click, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(back_btn, Back_To_Home, LV_EVENT_CLICKED, g_chat_ctrl->scr_home);
     lv_obj_add_event_cb(login_btn, Login_Click, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(reg_btn, Reg_Click, LV_EVENT_CLICKED, NULL);
+}
+
+// 20250928新增：退出按钮回调（释放所有资源）
+static void Chat_Room_Exit_Task(lv_event_t *e)
+{
+    // 发送离线通知（若已登录）
+    if (g_chat_ctrl && g_chat_ctrl->sockfd >= 0 && strlen(g_chat_ctrl->cur_account) > 0) {
+        NetMsg offline_msg;
+        memset(&offline_msg, 0, sizeof(offline_msg));
+        offline_msg.type = MSG_LOGOUT; // 新增消息类型：退出登录
+        strncpy(offline_msg.user.account, g_chat_ctrl->cur_account, 31);
+        Send_To_Server(&offline_msg);
+    }
+    Chat_Room_Exit(); // 调用原有释放函数
+    lv_scr_load(g_chat_ctrl->scr_home); // 返回首页
 }
 
 // 连接服务器按钮回调
@@ -334,7 +363,7 @@ static void Create_Register_Scr()
     lv_obj_t *back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, "返回登录");
     lv_obj_add_event_cb(back_btn, Back_To_Friend, LV_EVENT_CLICKED, NULL); // 复用返回好友列表回调
-    lv_obj_set_style_text_font(back_btn, &lv_myfont_kai_20, LV_STATE_DEFAULT);//适配中文字体
+    lv_obj_set_style_text_font(back_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);//适配中文字体
     lv_obj_center(back_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 绑定事件
@@ -473,10 +502,36 @@ static void Create_Friend_Scr()
     lv_obj_set_style_text_font(set_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);//20250927新增
     lv_obj_center(set_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
+    // 20250928新增：退出登录按钮
+    lv_obj_t *logout_btn = lv_btn_create(g_chat_ctrl->scr_friend);
+    lv_obj_set_size(logout_btn, 105, 30);
+    lv_obj_align(logout_btn, LV_ALIGN_BOTTOM_LEFT, 240, -20); // 设置按钮右侧
+    lv_obj_t *logout_label = lv_label_create(logout_btn);
+    lv_label_set_text(logout_label, "退出登录");
+    lv_obj_set_style_text_font(logout_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+    lv_obj_center(logout_label);
+    // 绑定退出登录回调
+    lv_obj_add_event_cb(logout_btn, Logout_Btn_Task, LV_EVENT_CLICKED, NULL);
+
     // 绑定事件
     lv_obj_add_event_cb(home_btn, Back_To_Home, LV_EVENT_CLICKED, g_chat_ctrl->scr_home);
     lv_obj_add_event_cb(set_btn, Setting_Btn_Task, LV_EVENT_CLICKED, g_chat_ctrl->scr_setting);
 
+}
+
+// 新增：退出登录回调（通知服务器+返回登录界面）
+static void Logout_Btn_Task(lv_event_t *e)
+{
+    // 1. 发送离线消息到服务器
+    NetMsg offline_msg;
+    memset(&offline_msg, 0, sizeof(offline_msg));
+    offline_msg.type = MSG_LOGOUT;
+    strncpy(offline_msg.user.account, g_chat_ctrl->cur_account, 31);
+    Send_To_Server(&offline_msg);
+
+    // 2. 清空当前账号，返回登录界面
+    memset(g_chat_ctrl->cur_account, 0, sizeof(g_chat_ctrl->cur_account));
+    lv_scr_load(g_chat_ctrl->scr_login);
 }
 
 // 发送消息回调
@@ -679,7 +734,7 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
     } 
 
     // 进入登录界面
-    lv_scr_load(g_chat_ctrl->scr_friend);
+    lv_scr_load(g_chat_ctrl->scr_login);
 }
 
 void Chat_Room_Exit() 
