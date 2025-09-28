@@ -149,6 +149,21 @@ static void Reg_Click(lv_event_t *e) {
     lv_scr_load(g_chat_ctrl->scr_register);
 }
 
+static void Setting_Btn_Task(lv_event_t *e)    //20250928新增
+{
+    // 1. 校验全局UI控制结构体有效性（避免空指针异常）
+    extern CHAT_CTRL_P g_chat_ctrl;  // 声明全局聊天模块控制结构体
+    if(g_chat_ctrl == NULL || g_chat_ctrl->scr_setting == NULL)
+    {
+        printf("Setting interface not initialized!\n");  // 调试log
+        return;
+    }
+
+    // 2. 切换至设置界面（LVGL8.2标准界面切换API）
+    lv_scr_load(g_chat_ctrl->scr_setting);
+}
+
+
 // 登录按钮回调（发送登录请求，适配ACK应答）
 static void Login_Click(lv_event_t *e) 
 {
@@ -460,7 +475,7 @@ static void Create_Friend_Scr()
 
     // 绑定事件
     lv_obj_add_event_cb(home_btn, Back_To_Home, LV_EVENT_CLICKED, g_chat_ctrl->scr_home);
-    lv_obj_add_event_cb(set_btn, Back_To_Home, LV_EVENT_CLICKED, g_chat_ctrl->scr_setting);
+    lv_obj_add_event_cb(set_btn, Setting_Btn_Task, LV_EVENT_CLICKED, g_chat_ctrl->scr_setting);
 
 }
 
@@ -664,7 +679,7 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
     } 
 
     // 进入登录界面
-    lv_scr_load(g_chat_ctrl->scr_login);
+    lv_scr_load(g_chat_ctrl->scr_setting);
 }
 
 void Chat_Room_Exit() 
