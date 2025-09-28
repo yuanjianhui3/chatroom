@@ -447,14 +447,16 @@ static void Create_Friend_Scr()
     lv_obj_t *home_label = lv_label_create(home_btn);
     lv_label_set_text(home_label, "返回首页");
     lv_obj_set_style_text_font(home_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);//20250927新增
-
+    lv_obj_center(home_label);  // 20250928新增补充：明确标签居中（确保文字居中）
+    
     // 设置按钮（扩展功能入口）
     lv_obj_t *set_btn = lv_btn_create(g_chat_ctrl->scr_friend);
     lv_obj_set_size(set_btn, 105, 30);
-    lv_obj_align(set_btn, LV_ALIGN_BOTTOM_RIGHT, -20, -20);
+    lv_obj_align(set_btn, LV_ALIGN_BOTTOM_LEFT, 130, -20);
     lv_obj_t *set_label = lv_label_create(set_btn);
     lv_label_set_text(set_label, "设置");
     lv_obj_set_style_text_font(set_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);//20250927新增
+    lv_obj_center(set_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 绑定事件
     lv_obj_add_event_cb(home_btn, Back_To_Home, LV_EVENT_CLICKED, g_chat_ctrl->scr_home);
@@ -500,18 +502,20 @@ static void Create_Chat_Scr()
     // 发送按钮
     lv_obj_t *send_btn = lv_btn_create(g_chat_ctrl->scr_chat);
     lv_obj_set_size(send_btn, 60, 40);
-    lv_obj_align(send_btn, LV_ALIGN_BOTTOM_RIGHT, -20, -60);
+    lv_obj_align(send_btn, LV_ALIGN_BOTTOM_MID, 160, -60);
     lv_obj_t *send_label = lv_label_create(send_btn);
     lv_label_set_text(send_label, "发送");
     lv_obj_set_style_text_font(send_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);//20250927新增，中文字体适配
+    lv_obj_center(send_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     // 返回好友列表按钮
     lv_obj_t *back_btn = lv_btn_create(g_chat_ctrl->scr_chat);
-    lv_obj_set_size(back_btn, 80, 30);
+    lv_obj_set_size(back_btn, 105, 30);
     lv_obj_align(back_btn, LV_ALIGN_BOTTOM_LEFT, 20, -20);
     lv_obj_t *back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, "返回好友");
     lv_obj_set_style_text_font(back_btn, &lv_myfont_kai_20, LV_STATE_DEFAULT);//20250927新增，中文字体适配
+    lv_obj_center(back_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
     lv_obj_add_event_cb(back_btn, Back_To_Friend, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(send_btn, Send_Msg_Click, LV_EVENT_CLICKED, NULL);
@@ -666,7 +670,6 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
 void Chat_Room_Exit() 
 {
     if(!g_chat_ctrl) return;
-
     // 关闭socket
     if(g_chat_ctrl->sockfd >= 0) close(g_chat_ctrl->sockfd);
 
