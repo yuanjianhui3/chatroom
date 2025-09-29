@@ -512,8 +512,7 @@ static void Create_Setting_Scr() {
     
     // 设置头像按钮（新增）
     lv_obj_t *avatar_btn = lv_btn_create(g_chat_ctrl->scr_setting);
-    lv_obj_set_size(avatar_btn, 105, 30);
-    lv_obj_align(avatar_btn, LV_ALIGN_TOP_MID, 0, 260);
+    lv_obj_align(avatar_btn, LV_ALIGN_TOP_MID, 190, 200);
     lv_obj_t *avatar_label = lv_label_create(avatar_btn);
     lv_label_set_text(avatar_label, "设置头像");
     lv_obj_set_style_text_font(avatar_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
@@ -523,8 +522,7 @@ static void Create_Setting_Scr() {
 
     // 添加好友按钮
     lv_obj_t *add_btn = lv_btn_create(g_chat_ctrl->scr_setting);
-    lv_obj_set_size(add_btn, 105, 30);
-    lv_obj_align(add_btn, LV_ALIGN_TOP_MID, -60, 200);
+    lv_obj_align(add_btn, LV_ALIGN_TOP_MID, 190, 80);
     lv_obj_t *add_label = lv_label_create(add_btn);
     lv_label_set_text(add_label, "添加好友");
     lv_obj_set_style_text_font(add_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
@@ -532,8 +530,7 @@ static void Create_Setting_Scr() {
 
     // 设置签名按钮
     lv_obj_t *sign_btn = lv_btn_create(g_chat_ctrl->scr_setting);
-    lv_obj_set_size(sign_btn, 105, 30);
-    lv_obj_align(sign_btn, LV_ALIGN_TOP_MID, 60, 200);
+    lv_obj_align(sign_btn, LV_ALIGN_TOP_MID, 190, 140);
     lv_obj_t *sign_label = lv_label_create(sign_btn);
     lv_label_set_text(sign_label, "设置签名");
     lv_obj_set_style_text_font(sign_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
@@ -563,7 +560,7 @@ static void Create_Friend_Scr()
     lv_obj_set_style_bg_color(g_chat_ctrl->scr_friend, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);
 
     // 标题
-    Create_Label(g_chat_ctrl->scr_friend, "在线好友", 20);
+    Create_Label(g_chat_ctrl->scr_friend, "好友列表", 20);
 
     // 好友列表（列表控件）
     g_chat_ctrl->friend_list = lv_list_create(g_chat_ctrl->scr_friend);
@@ -955,7 +952,8 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
     } 
 
     // 进入登录界面
-    lv_scr_load(g_chat_ctrl->scr_login);
+    lv_scr_load(g_chat_ctrl->scr_friend);
+    // 其他界面：scr_login、scr_register、scr_friend、scr_chat、scr_setting
 }
 
 void Chat_Room_Exit() 
@@ -997,7 +995,7 @@ void Chat_Room_Exit()
     pthread_mutex_destroy(&msg_mutex);
 
     // 释放界面资源（20250928新增修改NULL检查）
-    if(g_chat_ctrl->scr_login && lv_obj_is_valid(g_chat_ctrl->scr_login)) 
+    if(g_chat_ctrl->scr_login && lv_obj_is_valid(g_chat_ctrl->scr_login))
         lv_obj_del(g_chat_ctrl->scr_login);
     if(g_chat_ctrl->scr_register && lv_obj_is_valid(g_chat_ctrl->scr_register))
         lv_obj_del(g_chat_ctrl->scr_register);
