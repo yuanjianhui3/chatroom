@@ -636,6 +636,7 @@ static void Create_Chat_Scr()
 // 20250927新增：LVGL UI更新封装（确保主线程操作）
 static void Lvgl_Update_UI(void *param) {
     Handle_Server_Msg((NetMsg *)param);
+    free(param); // 20250929新增关键修改：释放堆分配的 NetMsg 内存，避免泄漏
 }
 
 // 处理服务器应答消息
@@ -719,13 +720,22 @@ static void Handle_Server_Msg(NetMsg *msg)
 // 接收服务器消息线程（避免阻塞UI）
 static void *Recv_Server_Msg(void *arg) 
 {
-    NetMsg msg;
+
     while(g_chat_ctrl && !g_chat_ctrl->exiting)
-    {   //20250928修改
-        memset(&msg, 0, sizeof(msg));
-        int ret = recv(g_chat_ctrl->sockfd, &msg, sizeof(NetMsg), 0);
+    {   
+       // 20250929新增修改：堆分配消息内存（关键修改：避免栈变量销毁问题）-----
+        NetMsg *msg = (NetMsg *)malloc(sizeof(NetMsg));
+        if (!msg) { // 内存分配失败处理
+            perror("malloc NetMsg failed");
+            sleep(1);
+            continue;
+        }
+        //20250928修改
+        memset(msg, 0, sizeof(*msg));
+        int ret = recv(g_chat_ctrl->sockfd, msg, sizeof(NetMsg), 0);
         
         if(ret <= 0 || !g_chat_ctrl || g_chat_ctrl->exiting) {
+            free(msg); // 20250929新增：接收失败，释放内存
             break;
         }
 
@@ -735,8 +745,11 @@ static void *Recv_Server_Msg(void *arg)
         // 再次检查，避免竞态条件
         if(g_chat_ctrl && !g_chat_ctrl->exiting) 
         {
-            lv_async_call(Lvgl_Update_UI, &msg); // 异步调用UI更新
+            lv_async_call(Lvgl_Update_UI, msg); //传递堆变量地址，异步执行时数据仍有效
+        } else {
+            free(msg); // 20250929新增：无需处理，直接释放
         }
+
         pthread_mutex_unlock(&msg_mutex);
     }
     printf("接收线程安全退出\n");
