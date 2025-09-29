@@ -30,7 +30,7 @@ static void Login_Click(lv_event_t *e);
 
 static void Reg_Click(lv_event_t *e);
 static void Do_Register(lv_event_t *e);
-static void Friend_Click(lv_event_t *e);
+static void Friend_Click_Enter_Chat(lv_event_t *e);
 static void Send_Msg_Click(lv_event_t *e);
 
 static void Connect_Server_Click(lv_event_t *e);
@@ -58,6 +58,12 @@ static bool is_thread_created = false; // 20250928新增：线程创建标志
 static void Refresh_Friend_List(lv_event_t *e); // 20250929新增：刷新好友列表回调函数声明
 static void Set_Avatar_Click(lv_event_t *e); // 20250929新增：设置头像回调函数声明
 static void Enter_Group_Chat(lv_event_t *e); // 20250929新增：进入群聊
+
+// 补充Show_Chat_Log和Create_Chat_Scr的前置声明
+static void Show_Chat_Log(const char *nickname, const char *avatar_path, const char *msg, int is_self);
+static void Create_Chat_Scr(void);
+
+static void Select_Avatar(lv_event_t *e);
 
 // -------------------------- 工具函数 --------------------------
 
@@ -409,46 +415,155 @@ static void Create_Register_Scr()
     lv_obj_add_event_cb(reg_btn, Do_Register, LV_EVENT_CLICKED, NULL);
 }
 
+static void Send_Chat_Msg(lv_event_t *e) {   //20250929新增
+    const char *msg_text = lv_textarea_get_text(g_chat_ctrl->chat_input_ta);
+    if (strlen(msg_text) == 0) return;
+    
+    // 1. 构造单聊消息（同步服务器）
+    NetMsg chat_msg;
+    memset(&chat_msg, 0, sizeof(chat_msg));
+
+    // 新增：判断群聊/单聊（解决段错误：避免chat_title空指针）
+    if (g_chat_ctrl->is_group_chat) {
+        chat_msg.type = MSG_GROUP_CHAT;
+        strncpy(chat_msg.content, msg_text, 191); // 群聊消息直接传内容
+    } else {
+        const char *target_friend = g_chat_ctrl->cur_chat_friend;       //20250929新增修改
+        chat_msg.type = MSG_SINGLE_CHAT;
+        snprintf(chat_msg.content, sizeof(chat_msg.content), "%s:%s", target_friend, msg_text);
+    }
+    
+    // 携带发送者信息（昵称+头像）
+    strncpy(chat_msg.user.nickname, g_chat_ctrl->cur_nickname, 31);
+    strncpy(chat_msg.user.avatar, g_chat_ctrl->cur_avatar, 63);
+    
+    // 2. 发送给服务器
+    if (Send_To_Server(&chat_msg) > 0) {
+        // 3. 本地显示自己的消息（带头像80*80）
+        Show_Chat_Log(g_chat_ctrl->cur_nickname, g_chat_ctrl->cur_avatar, msg_text, 1);
+        // 清空输入框
+        lv_textarea_set_text(g_chat_ctrl->chat_input_ta, "");
+    } else {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_chat, 0), "发送失败：连接断开");
+    }
+}
+
+// 辅助函数：显示聊天记录（带头像）
+static void Show_Chat_Log(const char *nickname, const char *avatar_path, const char *msg, int is_self) {
+    // 1. 创建消息行容器
+    lv_obj_t *msg_row = lv_obj_create(g_chat_ctrl->chat_log_cont);
+    lv_obj_set_size(msg_row, 630, 100);
+    lv_obj_set_style_bg_opa(msg_row, 0, LV_STATE_DEFAULT); // 透明背景
+    
+    // 2. 80*80头像按钮
+    lv_obj_t *msg_avatar = lv_btn_create(msg_row);
+    lv_obj_set_size(msg_avatar, 80, 80);
+    lv_obj_t *avatar_img = lv_img_create(msg_avatar);
+    lv_img_set_src(avatar_img, avatar_path);
+    lv_obj_align(avatar_img, LV_ALIGN_CENTER, 0, 0);
+    
+    // 3. 消息内容标签（带昵称）
+    lv_obj_t *msg_label = lv_label_create(msg_row);
+    char msg_full[200];
+    snprintf(msg_full, 200, "%s：%s", nickname, msg);
+    lv_label_set_text(msg_label, msg_full);
+    lv_obj_set_style_text_font(msg_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+    // 对齐头像
+    if (is_self) {
+        lv_obj_align(msg_label, LV_ALIGN_BOTTOM_LEFT, -100, 0);
+    } else {
+        lv_obj_align(msg_label, LV_ALIGN_BOTTOM_LEFT, 100, 0);
+    }
+    
+    // 4. 滚动到底部（“依序显示，可滚动查看”）20250930新增：// 获取最后一个子对象并滚动到它
+    int child_count = lv_obj_get_child_cnt(g_chat_ctrl->chat_log_cont);
+    if (child_count > 0) {
+        lv_obj_t *last_child = lv_obj_get_child(g_chat_ctrl->chat_log_cont, child_count - 1);
+        lv_obj_scroll_to_view(last_child, LV_ANIM_ON);
+    }
+}
+
 // 好友列表项点击（进入聊天窗口）
-static void Friend_Click(lv_event_t *e) 
+static void Friend_Click_Enter_Chat(lv_event_t *e) 
 {
     lv_obj_t *item = lv_event_get_current_target(e);
+    lv_obj_t *avatar_btn = lv_obj_get_child(item, 0);
 
-    char *friend_account = (char *)lv_obj_get_user_data(item); // 20250929新增：获取好友账号
-    if (friend_account == NULL) return;
+    char *friend_account = (char *)lv_obj_get_user_data(avatar_btn); // 20250929新增：获取好友账号
 
-    lv_obj_t *label = lv_obj_get_child(item, 0); // 获取按钮中的第一个子对象（标签）
-    const char *friend_name = lv_label_get_text(label);
-
-    printf("chat with %s (account: %s)\n", friend_name, friend_account);// 20250929新增修改（补充格式符%s，匹配2个参数）
-
-    // 20250929新增：存储当前聊天好友账号----------------------
-    strncpy(g_chat_ctrl->chat_friend_account, friend_account, sizeof(g_chat_ctrl->chat_friend_account)-1);
+    // 1. 创建单聊窗口（复用原有scr_chat，避免新窗口冗余）
+    if (!g_chat_ctrl->scr_chat) {
+        g_chat_ctrl->scr_chat = lv_obj_create(NULL);
+        lv_obj_set_style_bg_color(g_chat_ctrl->scr_chat, lv_color_hex(0xFFFFFF), LV_STATE_DEFAULT);
+        
+        // 1.1 聊天记录容器（支持滚动，方案要求）
+        g_chat_ctrl->chat_log_cont = lv_obj_create(g_chat_ctrl->scr_chat);
+        lv_obj_set_size(g_chat_ctrl->chat_log_cont, 650, 400);
+        lv_obj_align(g_chat_ctrl->chat_log_cont, LV_ALIGN_TOP_MID, 0, 60);
+        lv_obj_set_scroll_dir(g_chat_ctrl->chat_log_cont, LV_DIR_VER);
+        lv_obj_set_scrollbar_mode(g_chat_ctrl->chat_log_cont, LV_SCROLLBAR_MODE_AUTO);
+        
+        // 1.2 消息输入框
+        g_chat_ctrl->chat_input_ta = lv_textarea_create(g_chat_ctrl->scr_chat);
+        lv_obj_set_size(g_chat_ctrl->chat_input_ta, 500, 60);
+        lv_obj_align(g_chat_ctrl->chat_input_ta, LV_ALIGN_BOTTOM_MID, -80, -20);
+        lv_textarea_set_placeholder_text(g_chat_ctrl->chat_input_ta, "输入消息...");
+        
+        // 1.3 发送按钮
+        lv_obj_t *send_btn = lv_btn_create(g_chat_ctrl->scr_chat);
+        lv_obj_set_size(send_btn, 100, 60);
+        lv_obj_align(send_btn, LV_ALIGN_BOTTOM_MID, 270, -20);
+        lv_obj_t *send_label = lv_label_create(send_btn);
+        lv_label_set_text(send_label, "发送");
+        lv_obj_set_style_text_font(send_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+        lv_obj_center(send_label);
+        lv_obj_add_event_cb(send_btn, Send_Chat_Msg, LV_EVENT_CLICKED, friend_account);
+        
+        // 1.4 返回好友列表按钮
+        lv_obj_t *back_btn = lv_btn_create(g_chat_ctrl->scr_chat);
+        lv_obj_set_size(back_btn, 120, 40);
+        lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 20, 20);
+        lv_obj_t *back_label = lv_label_create(back_btn);
+        lv_label_set_text(back_label, "返回好友");
+        lv_obj_set_style_text_font(back_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+        lv_obj_center(back_label);
+        lv_obj_add_event_cb(back_btn, Back_To_Friend, LV_EVENT_CLICKED, NULL);
+    }
     
-    // 新增：更新聊天窗口标题（需先在Create_Chat_Scr创建标题标签）
+    // 2. 设置单聊窗口标题（好友昵称）
     lv_obj_t *chat_title = lv_label_create(g_chat_ctrl->scr_chat);
-    lv_label_set_text_fmt(chat_title, "聊天：%s", friend_name);
+    char title_text[64];
+    snprintf(title_text, 64, "单聊：%s", lv_label_get_text(lv_obj_get_child(item, 1)));
+    lv_label_set_text(chat_title, title_text);
     lv_obj_align(chat_title, LV_ALIGN_TOP_MID, 0, 20);
     lv_obj_set_style_text_font(chat_title, &lv_myfont_kai_20, LV_STATE_DEFAULT);
-
+    
+    // 3. 存储当前聊天好友账号
+    strncpy(g_chat_ctrl->cur_chat_friend, friend_account, 31);
+    
+    // 4. 跳转单聊窗口
     lv_scr_load(g_chat_ctrl->scr_chat);
 }
 
 // ----20250927新增--------------------
 // 添加好友回调
 static void Add_Friend_Click(lv_event_t *e) {
-    NetMsg msg;
-    memset(&msg, 0, sizeof(msg));
-    msg.type = MSG_ADD_FRIEND;
-    strncpy(msg.user.account, g_chat_ctrl->cur_account, 31);
-
-    // 获取输入的好友账号
-    lv_obj_t *friend_ta = lv_obj_get_child(g_chat_ctrl->scr_setting, 1);
-    strncpy(msg.content, lv_textarea_get_text(friend_ta), 255);
-
-    if(Send_To_Server(&msg) > 0) {
-        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_setting, 0), "添加请求已发送");
-        lv_textarea_set_text(friend_ta, "");
+    lv_obj_t *friend_acc_ta = lv_obj_get_child(g_chat_ctrl->scr_setting, 5);
+    const char *friend_acc = lv_textarea_get_text(friend_acc_ta);
+    if (strlen(friend_acc) == 0) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_setting, 0), "好友账号不能为空");
+        return;
+    }
+    
+    NetMsg add_msg;
+    memset(&add_msg, 0, sizeof(add_msg));
+    add_msg.type = MSG_ADD_FRIEND;
+    strncpy(add_msg.content, friend_acc, 31); // 好友账号
+    strncpy(add_msg.user.account, g_chat_ctrl->cur_account, 31); // 自己账号
+    
+    if (Send_To_Server(&add_msg) > 0) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_setting, 0), "添加中...");
+        lv_textarea_set_text(friend_acc_ta, "");
     }
 }
 
@@ -505,21 +620,6 @@ static void Create_Setting_Scr() {
     // 20250929新增：绑定键盘
     Dir_Look_Bind_Textarea_Keyboard(sign_ta, g_chat_ctrl->scr_setting);
 
-    // 20250929新增：头像路径输入框（索引3，新增）创建设置头像 UI------------------
-    lv_obj_t *avatar_ta = Create_Textarea(g_chat_ctrl->scr_setting, "头像路径（如S:/avatar/1.png）");
-    lv_obj_align(avatar_ta, LV_ALIGN_TOP_MID, 0, 200);
-    Dir_Look_Bind_Textarea_Keyboard(avatar_ta, g_chat_ctrl->scr_setting);
-    
-    // 设置头像按钮（新增）
-    lv_obj_t *avatar_btn = lv_btn_create(g_chat_ctrl->scr_setting);
-    lv_obj_align(avatar_btn, LV_ALIGN_TOP_MID, 190, 200);
-    lv_obj_t *avatar_label = lv_label_create(avatar_btn);
-    lv_label_set_text(avatar_label, "设置头像");
-    lv_obj_set_style_text_font(avatar_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
-    lv_obj_center(avatar_label);
-    lv_obj_add_event_cb(avatar_btn, Set_Avatar_Click, LV_EVENT_CLICKED, NULL);
-    // -----------------------------
-
     // 添加好友按钮
     lv_obj_t *add_btn = lv_btn_create(g_chat_ctrl->scr_setting);
     lv_obj_align(add_btn, LV_ALIGN_TOP_MID, 190, 80);
@@ -545,13 +645,83 @@ static void Create_Setting_Scr() {
     lv_obj_set_style_text_font(back_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
     lv_obj_center(back_label);  // 20250928新增补充：明确标签居中（确保文字居中）
 
+
+    // 1. 头像设置区域-----20250929新增修改----------------
+    g_chat_ctrl->avatar_preview_btn = lv_btn_create(g_chat_ctrl->scr_setting);
+    lv_obj_set_size(g_chat_ctrl->avatar_preview_btn, 80, 80);
+    lv_obj_t *preview_img = lv_img_create(g_chat_ctrl->avatar_preview_btn);
+    lv_img_set_src(preview_img, g_chat_ctrl->cur_avatar); // 使用当前头像
+    lv_obj_align(preview_img, LV_ALIGN_CENTER, 0, 0);
+    
+    // 2. 80*80头像预览按钮（方案要求）
+    g_chat_ctrl->avatar_preview_btn = lv_btn_create(g_chat_ctrl->scr_setting);
+    lv_obj_set_size(g_chat_ctrl->avatar_preview_btn, 80, 80);
+    lv_obj_align(g_chat_ctrl->avatar_preview_btn, LV_ALIGN_TOP_MID, 0, 60);
+    // 加载默认头像（服务器返回路径）
+    lv_img_set_src(g_chat_ctrl->avatar_preview_btn, g_chat_ctrl->cur_avatar);
+    
+    // 3. 头像路径选择按钮（简化：默认提供3个80*80头像选项）
+    lv_obj_t *avatar1_btn = lv_btn_create(g_chat_ctrl->scr_setting);
+    lv_obj_set_size(avatar1_btn, 60, 60);
+    lv_obj_align(avatar1_btn, LV_ALIGN_TOP_MID, -100, 160);
+    lv_obj_t *avatar1_img = lv_img_create(avatar1_btn);
+    lv_img_set_src(avatar1_img, "/avatar/avatar1_80x80.png");
+    lv_obj_center(avatar1_img);
+    lv_obj_add_event_cb(avatar1_btn, Select_Avatar, LV_EVENT_CLICKED, "/avatar/avatar1_80x80.png");
+
+    lv_obj_t *avatar2_btn = lv_btn_create(g_chat_ctrl->scr_setting);
+    lv_obj_set_size(avatar2_btn, 60, 60);
+    lv_obj_align(avatar2_btn, LV_ALIGN_TOP_MID, 0, 160);// 居中	
+    lv_obj_t *avatar2_img = lv_img_create(avatar2_btn);
+    lv_img_set_src(avatar2_img, "/avatar/avatar2_80x80.png");
+    lv_obj_center(avatar2_img);
+    lv_obj_add_event_cb(avatar2_btn, Select_Avatar, LV_EVENT_CLICKED, "/avatar/avatar2_80x80.png");
+
+    lv_obj_t *avatar3_btn = lv_btn_create(g_chat_ctrl->scr_setting);
+    lv_obj_set_size(avatar3_btn, 60, 60);
+    lv_obj_align(avatar3_btn, LV_ALIGN_TOP_MID, 100, 160);// 右侧
+    lv_obj_t *avatar3_img = lv_img_create(avatar3_btn);
+    lv_img_set_src(avatar3_img, "/avatar/avatar3_80x80.png");
+    lv_obj_center(avatar3_img);
+    lv_obj_add_event_cb(avatar3_btn, Select_Avatar, LV_EVENT_CLICKED, "/avatar/avatar3_80x80.png");
+    
+    // 4. 保存头像按钮
+    lv_obj_t *save_avatar_btn = lv_btn_create(g_chat_ctrl->scr_setting);
+    lv_obj_set_size(save_avatar_btn, 120, 40);
+    lv_obj_align(save_avatar_btn, LV_ALIGN_TOP_MID, 0, 250);
+    lv_obj_t *save_avatar_label = lv_label_create(save_avatar_btn);
+    lv_label_set_text(save_avatar_label, "保存头像");
+    lv_obj_set_style_text_font(save_avatar_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+    lv_obj_center(save_avatar_label);
+    lv_obj_add_event_cb(save_avatar_btn, Set_Avatar_Click, LV_EVENT_CLICKED, NULL);
+
     // 绑定事件
     lv_obj_add_event_cb(back_btn, Back_To_Friend, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(add_btn, Add_Friend_Click, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(sign_btn, Set_Signature_Click, LV_EVENT_CLICKED, NULL);
 }
-
 // ------------------------------------------
+
+// 选择头像回调（更新预览）
+static void Select_Avatar(lv_event_t *e) {
+    const char *avatar_path = (const char *)lv_event_get_user_data(e);
+    lv_img_set_src(g_chat_ctrl->avatar_preview_btn, avatar_path);
+    // 暂存选择的头像路径
+    strncpy(g_chat_ctrl->temp_avatar_path, avatar_path, 63);
+}
+
+// 保存头像到服务器
+static void Save_Avatar_To_Server(lv_event_t *e) {
+    NetMsg avatar_msg;
+    memset(&avatar_msg, 0, sizeof(avatar_msg));
+    avatar_msg.type = MSG_SET_AVATAR;
+    strncpy(avatar_msg.user.account, g_chat_ctrl->cur_account, 31);
+    strncpy(avatar_msg.user.avatar, g_chat_ctrl->temp_avatar_path, 63);
+    
+    if (Send_To_Server(&avatar_msg) > 0) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_setting, 0), "头像设置中...");
+    }
+}
 
 // 创建好友列表界面
 static void Create_Friend_Scr() 
@@ -559,14 +729,20 @@ static void Create_Friend_Scr()
     g_chat_ctrl->scr_friend = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(g_chat_ctrl->scr_friend, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);
 
-    // 标题
-    Create_Label(g_chat_ctrl->scr_friend, "好友列表", 20);
+    // 1. 好友列表标题
+    lv_obj_t *title = lv_label_create(g_chat_ctrl->scr_friend);
+    lv_label_set_text(title, "好友列表（在线）");
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_set_style_text_font(title, &lv_myfont_kai_20, LV_STATE_DEFAULT); // 楷体字库
 
-    // 好友列表（列表控件）
+    // 好友列表（列表控件）（20250929新增：滚动配置，“支持上下滚动”）
     g_chat_ctrl->friend_list = lv_list_create(g_chat_ctrl->scr_friend);
-    lv_obj_set_size(g_chat_ctrl->friend_list, 300, 350);
-    lv_obj_align(g_chat_ctrl->friend_list, LV_ALIGN_TOP_MID, 0, 60);
+    lv_obj_set_size(g_chat_ctrl->friend_list, 600, 400);//适配GEC6818 7寸屏。300, 350
+    lv_obj_align(g_chat_ctrl->friend_list, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(g_chat_ctrl->friend_list, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);//20250927新增
+    // 20250929新增：启用垂直滚动（核心配置）
+    lv_obj_set_scroll_dir(g_chat_ctrl->friend_list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(g_chat_ctrl->friend_list, LV_SCROLLBAR_MODE_AUTO); // 自动显示滚动条
 
     // 返回首页按钮
     lv_obj_t *home_btn = lv_btn_create(g_chat_ctrl->scr_friend);
@@ -639,9 +815,9 @@ static void Logout_Btn_Task(lv_event_t *e)
     lv_scr_load(g_chat_ctrl->scr_login);
 }
 
-// ------------------------------------20250929新增：新增Refresh_Friend_List回调实现-------
+// ------------------------------------20250929新增：新增刷新列表回调（请求服务器在线用户）-------
 static void Refresh_Friend_List(lv_event_t *e) {
-    // 请求在线用户列表（复用MSG_GET_ONLINE_USER）
+    // 请求服务器在线用户信息（账号/昵称/头像/签名/状态）（复用MSG_GET_ONLINE_USER）
     NetMsg get_user_msg = {.type = MSG_GET_ONLINE_USER};
     if (Send_To_Server(&get_user_msg) > 0) {
         lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "正在刷新...");
@@ -651,16 +827,28 @@ static void Refresh_Friend_List(lv_event_t *e) {
 }
 
 static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊界面
-    // 群聊窗口标题
-    lv_obj_t *chat_title = lv_label_create(g_chat_ctrl->scr_chat);
-    lv_label_set_text(chat_title, "群聊：默认群");
-    lv_obj_align(chat_title, LV_ALIGN_TOP_MID, 0, 20);
-    lv_obj_set_style_text_font(chat_title, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+    // 1. 复用聊天窗口（避免新窗口冗余）
+    if (!g_chat_ctrl->scr_chat) {
+        // 复用单聊窗口的创建逻辑（同4.1，无需重复代码）
+        Create_Chat_Scr(); // 可封装单聊/群聊共用的窗口创建函数
+    }
     
-    // 群聊提示
-    lv_obj_t *chat_content = lv_obj_get_child(g_chat_ctrl->scr_chat, 0);
-    lv_label_set_text(chat_content, "已进入群聊，消息将发送给所有人\n");
+    // 2. 解决标题重叠：先删除旧标题（核心优化）
+    lv_obj_t *old_title = lv_obj_get_child(g_chat_ctrl->scr_chat, 0);
+    if (old_title && strstr(lv_label_get_text(old_title), "聊天：") != NULL) {
+        lv_obj_del(old_title);
+    }
     
+    // 3. 创建新群聊标题
+    lv_obj_t *group_title = lv_label_create(g_chat_ctrl->scr_chat);
+    lv_label_set_text(group_title, "群聊：默认群（所有人）");
+    lv_obj_align(group_title, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_set_style_text_font(group_title, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+    
+    // 4. 标记当前为群聊模式（避免段错误）
+    g_chat_ctrl->is_group_chat = 1;
+    
+    // 5. 跳转群聊窗口
     lv_scr_load(g_chat_ctrl->scr_chat);
 }
 
@@ -739,6 +927,26 @@ static void Create_Chat_Scr()
     lv_obj_add_event_cb(send_btn, Send_Msg_Click, LV_EVENT_CLICKED, NULL);
 }
 
+static void Save_Signature_To_Server(lv_event_t *e) {
+    lv_obj_t *sign_ta = lv_obj_get_child(g_chat_ctrl->scr_setting, 3);
+    const char *signature = lv_textarea_get_text(sign_ta);
+    if (strlen(signature) == 0) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_setting, 0), "签名不能为空");
+        return;
+    }
+    
+    NetMsg sign_msg;
+    memset(&sign_msg, 0, sizeof(sign_msg));
+    sign_msg.type = MSG_SET_SIGNATURE;
+    strncpy(sign_msg.user.account, g_chat_ctrl->cur_account, 31);
+    strncpy(sign_msg.user.signature, signature, 63);
+    
+    if (Send_To_Server(&sign_msg) > 0) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_setting, 0), "签名设置中...");
+    }
+}
+
+
 // -------------------------- 网络接收线程 --------------------------
 
 // 20250927新增：LVGL UI更新封装（确保主线程操作）
@@ -771,14 +979,23 @@ static void Handle_Server_Msg(NetMsg *msg)
             {
                 if(msg->user.port == 1) 
                 { // ACK=1成功
+
+                    // 20250929新增：保存当前用户完整信息（解决“无法进入好友列表”核心原因）
                     strncpy(g_chat_ctrl->cur_account, msg->user.account, 31);
+                    strncpy(g_chat_ctrl->cur_nickname, msg->user.nickname, 31);
+                    strncpy(g_chat_ctrl->cur_avatar, msg->user.avatar, 63); // 80*80头像路径
+
                     // 登录成功后请求在线用户列表
-                    NetMsg get_user_msg = {.type = MSG_GET_ONLINE_USER};
-                    Send_To_Server(&get_user_msg);
+                    NetMsg get_online_msg = {.type = MSG_GET_ONLINE_USER};
+                    Send_To_Server(&get_online_msg );
+
+                    // 20250929新增：跳转好友列表（原逻辑未执行因cur_account为空）
                     lv_scr_load(g_chat_ctrl->scr_friend);
+                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功！");
                 } else 
-                { // ACK=0失败
-                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录失败：账号/密码错误");
+                { // ACK=0失败。提示重新输入
+                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "账号/密码错误，请重试");
+                    lv_textarea_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 2), ""); // 20250929新增：清空密码
                 }
             }        
             else if(strcmp(msg->content, "add_friend") == 0) //20250927新增
@@ -819,44 +1036,62 @@ static void Handle_Server_Msg(NetMsg *msg)
                 }
             }//-------------------------------------------------------
 
-            // 更新好友列表（格式：账号:昵称:签名|账号:昵称:签名|....）
-            lv_obj_clean(g_chat_ctrl->friend_list); // 清空原有列表
+            // 更新好友列表（格式：账号:昵称:头像路径:签名:在线状态|...）
+            lv_obj_clean(g_chat_ctrl->friend_list); // 清空原有列表（避免重叠）
 
             char *token = strtok(msg->content, "|");
 
-            while(token) {
-                char account[32], nickname[32], signature[64];
-                sscanf(token, "%[^:]:%[^:]:%s", account, nickname, signature);
+            while(token != NULL) {
+                char account[32], nickname[32], avatar[64], signature[64];
+                int online;     //20250929新增
+                sscanf(token, "%[^:]:%[^:]:%[^:]:%[^:]:%d", account, nickname, avatar, signature, &online);
 
-                // 添加列表项（显示昵称+签名）20250927新增显示在线状态（MSG_USER_LIST仅返回在线用户）
-                char item_text[100];
-                snprintf(item_text, 100, "%s(%s)", nickname, signature);
+                // 3. 创建好友列表项（带头像按钮80*80，方案要求）
+                lv_obj_t *list_item = lv_list_add_btn(g_chat_ctrl->friend_list, NULL, "");
+                lv_obj_set_size(list_item, 600, 100); // 列表项高度适配头像
+                    
+                // 3.1 80*80头像按钮（替换路径为图像按钮）
+                lv_obj_t *avatar_btn = lv_btn_create(list_item);
+                lv_obj_set_size(avatar_btn, 80, 80);
+                lv_obj_t *avatar_img = lv_img_create(avatar_btn);
+                lv_img_set_src(avatar_img, avatar);
+                lv_obj_align(avatar_img, LV_ALIGN_CENTER, 0, 0);
+                    
+                // 3.2 好友信息标签（昵称+签名+在线状态）
+                lv_obj_t *info_label = lv_label_create(list_item);
+                char info_text[128];
+                snprintf(info_text, 128, "%s\n%s\n%s", 
+                         nickname, signature, 
+                         online ? "[在线]" : "[离线]"); // 方案要求显示在线状态
+                lv_label_set_text(info_label, info_text);
+                lv_obj_align(info_label, LV_ALIGN_BOTTOM_LEFT, 100, 0);
+                lv_obj_set_style_text_font(info_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+        
+            // 3.3 绑定点击事件（进入单聊）
+            lv_obj_add_event_cb(list_item, Friend_Click_Enter_Chat, LV_EVENT_CLICKED, NULL);
 
-                lv_obj_t *item = lv_list_add_btn(g_chat_ctrl->friend_list, NULL, item_text);
-                lv_obj_set_user_data(item, strdup(account)); // 20250929新增：存储好友账号（后续聊天用）
-                lv_obj_add_event_cb(item, Friend_Click, LV_EVENT_CLICKED, NULL);
-                token = strtok(NULL, "|");
-            }
-                // 20250929新增：刷新提示
-                lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "好友列表已更新");
-            break;
-        }
-        case MSG_SEND_MSG: {
-            // 接收聊天消息（格式：发送者昵称: 消息内容）
-            lv_obj_t *chat_content = lv_obj_get_child(g_chat_ctrl->scr_chat, 0);
-            char new_msg[300];
-            snprintf(new_msg, 300, "%s: %s\n%s", msg->user.nickname, msg->content, lv_textarea_get_text(chat_content));
-            lv_label_set_text(chat_content, new_msg); // 修改为使用标签
-            break;
-        }
-        case MSG_GROUP_CHAT: {
-            // 20250929新增：群聊消息格式：发送者昵称+内容
-            lv_obj_t *chat_title = lv_obj_get_child(g_chat_ctrl->scr_chat, 2);
-            if (strstr(lv_label_get_text(chat_title), "群聊") == NULL) {
-                // 若当前不在群聊窗口，弹窗提示（简化为标签显示）
-                lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), 
-                                 "收到群聊消息，请进入群聊查看");
+                    token = strtok(NULL, "|");
+                }
+                    // 20250929新增：刷新提示
+                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "好友列表已更新");
                 break;
+            }
+            case MSG_SEND_MSG: {
+                // 接收聊天消息（格式：发送者昵称: 消息内容）
+                lv_obj_t *chat_content = lv_obj_get_child(g_chat_ctrl->scr_chat, 0);
+                char new_msg[300];
+                snprintf(new_msg, 300, "%s: %s\n%s", msg->user.nickname, msg->content, lv_textarea_get_text(chat_content));
+                lv_label_set_text(chat_content, new_msg); // 修改为使用标签
+                break;
+            }
+            case MSG_GROUP_CHAT: {
+                // 20250929新增：群聊消息格式：发送者昵称+内容
+                lv_obj_t *chat_title = lv_obj_get_child(g_chat_ctrl->scr_chat, 2);
+                if (strstr(lv_label_get_text(chat_title), "群聊") == NULL) {
+                    // 若当前不在群聊窗口，弹窗提示（简化为标签显示）
+                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), 
+                                     "收到群聊消息，请进入群聊查看");
+                    break;
             }
             // 在群聊窗口显示消息
             lv_obj_t *chat_content = lv_obj_get_child(g_chat_ctrl->scr_chat, 0);
@@ -864,6 +1099,31 @@ static void Handle_Server_Msg(NetMsg *msg)
             snprintf(new_msg, 300, "%s(群聊): %s\n%s", 
                      msg->user.nickname, msg->content, lv_label_get_text(chat_content));
             lv_label_set_text(chat_content, new_msg);
+            break;
+        }
+
+        case MSG_SINGLE_CHAT_RECV: {
+            // 20250929新增：检查是否在单聊窗口
+            if (!g_chat_ctrl->scr_chat) {
+                // 不在聊天窗口：提示用户
+                lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "收到新消息，请进入聊天窗口查看");
+                break;
+            }
+            // 显示对方消息（is_self=0，左对齐）
+            Show_Chat_Log(msg->user.nickname, msg->user.avatar, msg->content, 0);
+            break;
+        }
+
+        case MSG_GROUP_CHAT_RECV: {
+            if (!g_chat_ctrl->scr_chat || !g_chat_ctrl->is_group_chat) {
+                // 不在群聊窗口：提示
+                lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "收到群聊消息，请进入群聊查看");
+                break;
+            }
+            // 显示群聊消息（带“群聊”标识）
+            char group_nickname[64];
+            snprintf(group_nickname, 64, "%s(群聊)", msg->user.nickname);
+            Show_Chat_Log(group_nickname, msg->user.avatar, msg->content, 0);
             break;
         }
 
