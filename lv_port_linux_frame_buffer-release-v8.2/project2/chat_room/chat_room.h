@@ -16,10 +16,11 @@ typedef enum {
     MSG_SEND_MSG,        // 发送聊天消息
     MSG_ADD_FRIEND,      // 添加好友
     MSG_SET_SIGNATURE,    // 设置个性签名
-
+    MSG_SET_AVATAR,         // 20250929新增设置头像
+    MSG_GROUP_CHAT,         // 20250929新增群聊消息
     MSG_GET_FRIEND_LIST,  // 获取好友列表
+    MSG_LOGOUT          // 20250928新增：退出登录
 
-    MSG_LOGOUT = 9       // 20250928新增：退出登录
 } MsgType;
 
 // 用户信息结构体（注册/登录/在线用户共用）
@@ -54,6 +55,8 @@ typedef struct {
 
     lv_obj_t *scr_setting; // 设置界面（个性签名/头像）
     bool exiting;   // 20250928新增退出标志
+
+    char chat_friend_account[32]; // 20250929新增：当前聊天好友账号
 } CHAT_CTRL, *CHAT_CTRL_P;
 
 #endif
