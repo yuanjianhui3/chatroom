@@ -80,7 +80,9 @@ static void Hide_Keyboard_Task(lv_event_t *e) {
 
 static lv_obj_t *Create_Touch_Keyboard(lv_obj_t *parent_scr)
 {
-    static lv_obj_t *keyboard = NULL;
+    // 20250929新增修改：从当前界面的user_data获取键盘，而非全局静态变量
+    lv_obj_t *keyboard = (lv_obj_t *)lv_obj_get_user_data(parent_scr);
+
     if (keyboard == NULL) {
         // 1. 创建键盘实例（父容器为当前界面，确保随界面切换显示）
         keyboard = lv_keyboard_create(parent_scr);
@@ -98,6 +100,8 @@ static lv_obj_t *Create_Touch_Keyboard(lv_obj_t *parent_scr)
         lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN); // 默认隐藏
         lv_obj_add_event_cb(parent_scr,Hide_Keyboard_Task, LV_EVENT_CLICKED, keyboard);
         lv_obj_set_user_data(parent_scr, keyboard);     //20250929修改
+
+        printf("当前界面：%p，键盘实例：%p\n", parent_scr, keyboard); //20250929新增
     }
     return keyboard;
 }
