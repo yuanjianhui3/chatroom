@@ -17,13 +17,9 @@ typedef enum {
     MSG_ADD_FRIEND,      // 添加好友
     MSG_SET_SIGNATURE,    // 设置个性签名
     MSG_SET_AVATAR,         // 20250929新增设置头像
-    MSG_GROUP_CHAT,         // 20250929新增群聊消息（发送）
-    MSG_SINGLE_CHAT,     // 单聊消息（发送）
-    MSG_SINGLE_CHAT_RECV,// 单聊消息（接收）
-    MSG_GROUP_CHAT_RECV, // 群聊消息（接收）
-
-    MSG_LOGOUT,          // 20250928新增：退出登录
-    MSG_GET_FRIEND_LIST  // 获取好友列表
+    MSG_GROUP_CHAT,         // 20250929新增群聊消息
+    MSG_GET_FRIEND_LIST,  // 获取好友列表
+    MSG_LOGOUT          // 20250928新增：退出登录
 
 } MsgType;
 
@@ -61,16 +57,10 @@ typedef struct {
     bool exiting;   // 20250928新增退出标志
 
     char chat_friend_account[32]; // 20250929新增：当前聊天好友账号
-    char cur_nickname[32];  // 20250929新增：当前用户昵称
-    char cur_avatar[64];    // 20250929新增：当前用户80*80头像路径
 
-    char cur_chat_friend[32];  // 20250929新增：当前聊天好友账号
-    lv_obj_t *chat_log_cont;   // 20250929新增：聊天记录容器
-    lv_obj_t *chat_input_ta;   // 20250929新增：消息输入框
-    int is_group_chat;          // 20250929新增：1=群聊，0=单聊
-
-    lv_obj_t *avatar_preview_btn;   // 20250929新增：头像预览按钮
-    char temp_avatar_path[64];      // 20250929新增：暂存选择的头像路径
+    lv_obj_t *chat_content_ta; // 20250930新增：聊天内容文本框（单聊/群聊共用）
+    lv_obj_t *chat_avatar_btn; // 新增：聊天窗口头像按钮
+    lv_obj_t *group_chat_title; // 新增：群聊标题（避免重叠）
 
 } CHAT_CTRL, *CHAT_CTRL_P;
 

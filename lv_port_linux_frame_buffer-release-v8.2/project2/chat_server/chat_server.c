@@ -15,7 +15,7 @@
 #define SERVER_PORT 8888    // 服务器端口（需与客户端一致）
 #define MAX_CLIENT 10       // 最大连接数
 #define MAX_USER 100        // 最大注册用户数
-#define USER_FILE "./iot_chat_users.dat" // 20250929新增：用户数据存储文件（当前目录）
+#define USER_FILE "user.dat" // 20250929新增：用户数据存储文件（当前目录）
 
 // ========== 类型定义 ==========
 // 协议类型（与客户端一致，区分不同请求/响应）
@@ -29,11 +29,7 @@ typedef enum {
     MSG_ADD_FRIEND,      // 添加好友
     MSG_SET_SIGNATURE,    // 设置个性签名
     MSG_SET_AVATAR,       // 20250929新增：设置头像
-    MSG_GROUP_CHAT,         // 20250929新增群聊消息（发送）
-    MSG_SINGLE_CHAT,     // 单聊消息（发送）
-    MSG_SINGLE_CHAT_RECV,// 单聊消息（接收）
-    MSG_GROUP_CHAT_RECV, // 群聊消息（接收）
-
+    MSG_GROUP_CHAT,         // 20250929新增群聊消息    
     MSG_LOGOUT            // 20250928新增退出登录
 
 } MsgType;
@@ -93,7 +89,7 @@ pthread_mutex_t data_mutex;      // 数据保护互斥锁
 static void Load_Reg_Users() {
     FILE *fp = fopen(USER_FILE, "rb");
     if (fp == NULL) {
-        printf("[log] 首次启动，无历史用户数据\n");
+        printf("用户数据文件不存在，初始化空列表\n");
         return;
     }
     // 读取注册用户数
@@ -102,21 +98,21 @@ static void Load_Reg_Users() {
     // 读取用户数据
     fread(reg_users, sizeof(RegUser), reg_user_count, fp);
     fclose(fp);
-    printf("[log] 加载成功：%d个注册用户\n", reg_user_count);
+    printf("加载成功：%d个注册用户\n", reg_user_count);
 }
 
-// 保存用户数据（注册/修改后调用）
+// 保存用户数据（修改后调用）
 static void Save_Reg_Users() {
     FILE *fp = fopen(USER_FILE, "wb");
     if (fp == NULL) {
-        perror("[log] 保存用户数据失败");
+        perror("保存用户数据失败");
         return;
     }
     // 写入用户数+用户数据
     fwrite(&reg_user_count, sizeof(int), 1, fp);
     fwrite(reg_users, sizeof(RegUser), reg_user_count, fp);
     fclose(fp);
-    printf("[log] 保存成功：%d个注册用户\n", reg_user_count);
+    printf("保存成功：%d个注册用户\n", reg_user_count);
 }   //-----------------------------
 
 // -------------------------- 工具函数 --------------------------
@@ -145,8 +141,9 @@ static void Get_Online_User_Str(char *buf, int buf_len) {
     buf[0] = '\0';
     for(int i=0; i<client_count; i++) {
         if(clients[i].user.online) {
+             // 新增：添加在线状态标识（格式：账号:昵称:签名:在线|）
             char temp[256];
-            snprintf(temp, 256, "%s:%s:%s|", clients[i].user.account, clients[i].user.nickname,clients[i].user.signature);
+            snprintf(temp, 256, "%s:%s:%s:在线|", clients[i].user.account, clients[i].user.nickname,clients[i].user.signature);
             strncat(buf, temp, buf_len - strlen(buf) - 1);
         }
     }
@@ -172,14 +169,14 @@ static void Send_ACK(int sockfd, const char *type, int result, RegUser *user) {
     memset(&ack, 0, sizeof(ack));
     ack.type = MSG_ACK;
     strncpy(ack.content, type, 255);
-    ack.user.port = result; // 1成功，0失败（复用online字段传结果）
+    ack.user.port = result; // 1成功，0失败
 
     // 20250929新增：复制用户信息（账号/昵称/签名/头像）
     if (user != NULL) {
         strncpy(ack.user.account, user->account, sizeof(ack.user.account)-1);
         strncpy(ack.user.nickname, user->nickname, sizeof(ack.user.nickname)-1);
         strncpy(ack.user.signature, user->signature, sizeof(ack.user.signature)-1);
-        strncpy(ack.user.avatar, user->avatar, sizeof(ack.user.avatar)-1);// 头像路径（80*80）
+        strncpy(ack.user.avatar, user->avatar, sizeof(ack.user.avatar)-1);
         ack.user.online = user->online;
     }
 
@@ -215,10 +212,10 @@ static void Handle_Register(NetMsg *msg, ClientInfo *client) {
         new_user->friend_cnt = 0;
         reg_users[reg_user_count++] = *new_user;   // 复制到注册用户列表加*
 
-        Save_Reg_Users(); // 20250929新增：注册成功后保存注册用户
+        Save_Reg_Users(); // 20250929新增：保存注册用户
         free(new_user); // 20250927新增:释放堆内存
 
-        Send_ACK(client->sockfd, "register", 1, new_user); // 成功ACK。20250929修改：传递new_user（完整注册信息）
+        Send_ACK(client->sockfd, "register", 1, NULL); // 成功ACK
         printf("注册成功：账号=%s, 昵称=%s, IP=%s, 端口=%d\n",
             msg->user.account, msg->user.nickname, msg->user.ip, msg->user.port);//20250928修改
     } else {
@@ -235,49 +232,25 @@ static void Handle_Login(NetMsg *msg, ClientInfo *client) {
     }
     // 验证密码
     if(strcmp(reg_user->password, msg->user.password) != 0) {
-        Send_ACK(client->sockfd, "login", 0, NULL);
+        Send_ACK(client->sockfd, "login", 0, reg_user);// 20250930新增：传reg_user，确保账号回传
         return;
     }
     // 标记在线
     client->user = *reg_user;
     client->user.online = 1;
-    Send_ACK(client->sockfd, "login", 1, reg_user); // 传递reg_user，返回完整注册用户信息。成功ACK
-    printf("登录成功：%s\n", msg->user.account);
+    Send_ACK(client->sockfd, "login", 1, reg_user); // 传递reg_user，返回完整信息。成功ACK
+    printf("用户%s登录成功，返回ACK=1\n", msg->user.account);
 }
 
 static void Handle_Get_Online_User(ClientInfo *client) {
-    NetMsg online_msg;
-    memset(&online_msg, 0, sizeof(online_msg));
-    online_msg.type = MSG_USER_LIST;
+    NetMsg user_msg;
+    memset(&user_msg, 0, sizeof(user_msg));
+    user_msg.type = MSG_USER_LIST;
+    Get_Online_User_Str(user_msg.content, 256);
+    send(client->sockfd, &user_msg, sizeof(user_msg), 0);
 
-    online_msg.content[0] = '\0'; //----202509929新增--------
-
-    // 拼接在线用户信息（格式：账号:昵称:头像:签名:在线状态|...）
-    for (int i = 0; i < reg_user_count; i++) {
-        int is_online = 0;
-        // 检查用户是否在线
-        for (int j = 0; j < MAX_CLIENT; j++) {
-            if (strcmp(clients[j].user.account, reg_users[i].account) == 0) {
-                is_online = 1;
-                break;
-            }
-        }
-        // 拼接信息（含80*80头像路径）
-        char user_info[256];
-        snprintf(user_info, 256, "%s:%s:%s:%s:%d|", 
-                 reg_users[i].account,
-                 reg_users[i].nickname,
-                 reg_users[i].avatar, // 80*80头像路径
-                 reg_users[i].signature,
-                 is_online);
-        strncat(online_msg.content, user_info, sizeof(online_msg.content)-1);
-    }
-    // 发送给客户端----------------------------
-    
-    send(client->sockfd, &online_msg, sizeof(online_msg), 0);
-
-    printf("[log] 客户端%s请求在线用户列表，列表：%s\n",
-        client->user.account, online_msg.content); // 20250928新增log
+    printf("客户端%s请求在线用户列表，列表：%s\n",
+        client->user.account, user_msg.content); // 20250928新增log
 
 }
 
@@ -285,7 +258,8 @@ static void Handle_Add_Friend(NetMsg *msg, ClientInfo *client) {
     // 查找目标用户
     RegUser *target = Find_Reg_User(msg->content);
     if(!target) {
-        Send_ACK(client->sockfd, "add_friend", 0, NULL);
+        Send_ACK(client->sockfd, "add_friend", 0, NULL);// 不存在返回0
+        printf("添加好友失败：目标账号%s不存在\n", msg->content);   //20250930新增
         return;
     }
     // 检查是否已为好友
@@ -309,34 +283,63 @@ static void Handle_Add_Friend(NetMsg *msg, ClientInfo *client) {
     Save_Reg_Users(); // 20250929新增：保存好友列表
 }
 
-static void Handle_Set_Signature(NetMsg *msg, ClientInfo *client) 
-{
-    strncpy(client->user.signature, msg->user.signature, 63);
-    RegUser *reg_user = Find_Reg_User(msg->user.account);
-    if (reg_user) {
-        strncpy(reg_user->signature, msg->user.signature, 63);
-        Save_Reg_Users(); // 持久化
+static void Handle_Set_Signature(NetMsg *msg, ClientInfo *client) {
+    // 20250928修改更新签名
+    snprintf(client->user.signature, sizeof(client->user.signature), "%s", msg->user.signature);
+
+    // 更新注册用户
+    RegUser *reg_user = Find_Reg_User(client->user.account);
+
+    if (reg_user != NULL) {
+        strncpy(reg_user->signature, client->user.signature, sizeof(reg_user->signature)-1);
+        Save_Reg_Users(); // 20250929新增修改：保存个性签名修改
     }
+
+    printf("更新签名：%s→%s\n", client->user.account, msg->user.signature);
+
+    // 20250929新增：返回ACK给客户端
     Send_ACK(client->sockfd, "set_signature", 1, reg_user);
-    printf("[log] %s更新签名：%s\n", msg->user.account, msg->user.signature);
 }
 
 // --------20250929新增：服务器端头像设置函数------------------------
 static void Handle_Set_Avatar(NetMsg *msg, ClientInfo *client) {
-
-    // 1. 更新客户端当前头像
-    strncpy(client->user.avatar, msg->user.avatar, 63);
-
-    // 2. 更新注册用户数组（持久化）
-    RegUser *reg_user = Find_Reg_User(msg->user.account);
-    if (reg_user) {
-        strncpy(reg_user->avatar, msg->user.avatar, 63);
-        Save_Reg_Users(); // 方案要求：持久化保存
+    // 更新客户端头像
+    snprintf(client->user.avatar, sizeof(client->user.avatar), "%s", msg->user.avatar);
+    // 更新注册用户
+    RegUser *reg_user = Find_Reg_User(client->user.account);
+    if (reg_user != NULL) {
+        strncpy(reg_user->avatar, client->user.avatar, sizeof(reg_user->avatar)-1);
+        Save_Reg_Users(); // 保存修改
     }
-    
-    // 3. 返回成功ACK
-    Send_ACK(client->sockfd, "set_avatar", 1, reg_user);
-    printf("[log] %s更新头像：%s\n", msg->user.account, msg->user.avatar);
+    printf("更新头像：%s→%s\n", client->user.account, msg->user.avatar);
+    Send_ACK(client->sockfd, "set_avatar", 1, reg_user); // 返回ACK
+}
+
+// 20250929新增：群聊消息处理（广播给所有在线客户端）
+static void Handle_Group_Chat(NetMsg *msg, ClientInfo *client) {
+    // 解析群ID（此处简化为“default”默认群）
+    char group_id[32], msg_content[224];
+    if (sscanf(msg->content, "%[^:]:%s", group_id, msg_content) != 2) {
+        printf("群聊消息格式错误：%s\n", msg->content);
+        return;
+    }
+    // 构造群聊消息（携带发送者昵称+消息）
+    NetMsg group_msg;
+    memset(&group_msg, 0, sizeof(group_msg));
+    group_msg.type = MSG_GROUP_CHAT;
+    strncpy(group_msg.user.nickname, client->user.nickname, sizeof(group_msg.user.nickname)-1); // 发送者昵称
+    snprintf(group_msg.content, sizeof(group_msg.content), "%s", msg_content);
+
+    // 广播给所有在线客户端（排除发送者自己）
+    pthread_mutex_lock(&data_mutex);
+    for (int i = 0; i < MAX_CLIENT; i++) {
+        if (clients[i].user.online == 1 && clients[i].sockfd != client->sockfd) 
+        {   //20250929新增修改：访问RegUser的online成员
+            send(clients[i].sockfd, &group_msg, sizeof(group_msg), 0);
+        }
+    }
+    pthread_mutex_unlock(&data_mutex);
+    printf("群聊广播：%s（%s）→%s\n", client->user.nickname, group_id, msg_content);
 }
 
 // -------------------------- 客户端处理线程 --------------------------
@@ -374,31 +377,7 @@ static void *Handle_Client(void *arg) {
             case MSG_LOGIN: Handle_Login(msg, client); break;                  //调用登录 消息处理函数
             case MSG_GET_ONLINE_USER: Handle_Get_Online_User(client); break;    //调用在线用户 消息处理函数
             case MSG_SET_AVATAR: Handle_Set_Avatar(msg, client); break;          // 20250929新增头像处理
-            case MSG_GROUP_CHAT:
-            {
-                // 1. 20250929新增修改：构造群聊广播消息（携带发送者昵称+头像）
-                NetMsg group_msg;
-                memset(&group_msg, 0, sizeof(group_msg));
-                group_msg.type = MSG_GROUP_CHAT_RECV;
-                strncpy(group_msg.user.nickname, msg->user.nickname, 31);
-                strncpy(group_msg.user.avatar, msg->user.avatar, 63);
-                strncpy(group_msg.content, msg->content, 191);
-
-                // 2. 广播给所有在线客户端（排除发送者自己）
-                pthread_mutex_lock(&data_mutex); // 加锁防并发
-                for (int i = 0; i < MAX_CLIENT; i++) {
-                    if (clients[i].user.online && clients[i].sockfd != client->sockfd) {
-                        send(clients[i].sockfd, &group_msg, sizeof(group_msg), 0);
-                    }
-                }
-                pthread_mutex_unlock(&data_mutex);
-
-                // 3. 向发送者返回成功ACK
-                Send_ACK(client->sockfd, "group_chat", 1, NULL);
-                printf("[log] 群聊广播：%s发送消息：%s\n", client->user.account, msg->content);
-                break;
-            }
-
+            case MSG_GROUP_CHAT: Handle_Group_Chat(msg, client); break;         // 新增群聊处理
             case MSG_SEND_MSG: {
                 // 20250929新增修改：解析「接收者账号:消息内容」（单聊转发）
                 char recv_account[32], msg_content[224];
@@ -433,43 +412,7 @@ static void *Handle_Client(void *arg) {
                 break;
             }
 
-            case MSG_SINGLE_CHAT: {
-                // 20250929新增：解析消息：好友账号:消息内容
-                char friend_account[32], msg_text[192];
-                sscanf(msg->content, "%[^:]:%s", friend_account, msg_text);
-
-                // 1. 查找接收方客户端（在线）
-                ClientInfo *recv_client = NULL;
-                for (int i = 0; i < MAX_CLIENT; i++) {
-                    if (clients[i].user.online && strcmp(clients[i].user.account, friend_account) == 0) {
-                        recv_client = &clients[i];
-                        break;
-                    }
-                }
-                if (!recv_client) {
-                    // 接收方离线（方案未要求离线存储，仅提示发送方）
-                    Send_ACK(client->sockfd, "single_chat", 0, NULL);
-                    printf("[log] 单聊转发失败：%s离线\n", friend_account);
-                    break;
-                }
-
-                // 2. 构造转发消息（携带发送者昵称+头像）
-                NetMsg forward_msg;
-                memset(&forward_msg, 0, sizeof(forward_msg));
-                forward_msg.type = MSG_SINGLE_CHAT_RECV;
-                strncpy(forward_msg.user.nickname, msg->user.nickname, 31);
-                strncpy(forward_msg.user.avatar, msg->user.avatar, 63);
-                strncpy(forward_msg.content, msg_text, 191);
-
-                // 3. 转发给接收方
-                send(recv_client->sockfd, &forward_msg, sizeof(forward_msg), 0);
-                // 4. 向发送方返回成功ACK
-                Send_ACK(client->sockfd, "single_chat", 1, NULL);
-                printf("[log] 单聊转发：%s→%s，消息：%s\n", 
-                       client->user.account, friend_account, msg_text);
-                break;
-            }
-
+            
             case MSG_ADD_FRIEND: Handle_Add_Friend(msg, client); break;        //调用添加好友 消息处理函数
             case MSG_SET_SIGNATURE: Handle_Set_Signature(msg, client); break;  //调用个性签名 消息处理函数
 
