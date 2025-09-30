@@ -228,16 +228,18 @@ static void Handle_Login(NetMsg *msg, ClientInfo *client) {
     RegUser *reg_user = Find_Reg_User(msg->user.account);
     if(!reg_user) {
         Send_ACK(client->sockfd, "login", 0, NULL);
+        printf("登录失败：账号%s不存在\n", msg->user.account); // 20250930新增日志
         return;
     }
     // 验证密码
     if(strcmp(reg_user->password, msg->user.password) != 0) {
         Send_ACK(client->sockfd, "login", 0, reg_user);// 20250930新增：传reg_user，确保账号回传
+        printf("登录失败：账号%s密码错误\n", msg->user.account); // 20250930新增日志
         return;
     }
-    // 标记在线
+    // 标记在线（关键：确保online=1）
     client->user = *reg_user;
-    client->user.online = 1;
+    client->user.online = 1;// 强制设为1，避免未初始化
     Send_ACK(client->sockfd, "login", 1, reg_user); // 传递reg_user，返回完整信息。成功ACK
     printf("用户%s登录成功，返回ACK=1\n", msg->user.account);
 }
@@ -247,11 +249,12 @@ static void Handle_Get_Online_User(ClientInfo *client) {
     memset(&user_msg, 0, sizeof(user_msg));
     user_msg.type = MSG_USER_LIST;
     Get_Online_User_Str(user_msg.content, 256);
-    send(client->sockfd, &user_msg, sizeof(user_msg), 0);
 
-    printf("客户端%s请求在线用户列表，列表：%s\n",
-        client->user.account, user_msg.content); // 20250928新增log
-
+    //验证在线用户列表请求是否成功 // 20250928新增log，打印返回的用户列表
+    printf("Handle_Get_Online_User：客户端%s请求在线用户列表，列表：%s\n",client->user.account, user_msg.content);
+    
+    if(send(client->sockfd, &user_msg, sizeof(user_msg), 0) <= 0)
+    {printf("Handle_Get_Online_User：发送用户列表失败\n");};
 }
 
 static void Handle_Add_Friend(NetMsg *msg, ClientInfo *client) {

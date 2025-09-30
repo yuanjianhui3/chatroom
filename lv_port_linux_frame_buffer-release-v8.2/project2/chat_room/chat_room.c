@@ -587,6 +587,13 @@ static void Create_Setting_Scr() {
 static void Create_Friend_Scr() 
 {
     g_chat_ctrl->scr_friend = lv_obj_create(NULL);
+    //20250930新增：确保g_chat_ctrl->scr_friend被正确赋值给全局变量，且添加日志确认
+    if(g_chat_ctrl->scr_friend == NULL) {
+        printf("Create_Friend_Scr：创建scr_friend失败！\n");
+        return;
+    }
+    printf("Create_Friend_Scr：scr_friend创建成功（%p）\n", g_chat_ctrl->scr_friend);
+    
     lv_obj_set_style_bg_color(g_chat_ctrl->scr_friend, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);
 
     // 标题
@@ -806,8 +813,17 @@ static void Create_Chat_Scr()
 // -------------------------- 网络接收线程 --------------------------
 
 // 20250927新增：LVGL UI更新封装（确保主线程操作）
-static void Lvgl_Update_UI(void *param) {
-    Handle_Server_Msg((NetMsg *)param);
+static void Lvgl_Update_UI(void *param) 
+{   // 20250930新增：异步执行时再次校验全局变量有效性
+    NetMsg *msg = (NetMsg *)param;
+    if(!g_chat_ctrl) {
+        printf("Lvgl_Update_UI：g_chat_ctrl已释放，跳过处理\n");
+        free(param);
+        return;
+    }
+
+    // 20250930修改：处理服务器消息（包含登录ACK的界面切换）
+    Handle_Server_Msg(msg);
     free(param); // 20250929新增关键修改：释放堆分配的 NetMsg 内存，避免泄漏
 }
 
@@ -833,26 +849,40 @@ static void Handle_Server_Msg(NetMsg *msg)
             } 
             else if(strcmp(msg->content, "login") == 0)
             {
-                // 20250930新增：打印调试日志，确认进入登录处理分支
-                printf("收到登录ACK：result=%d, account=%s\n", msg->user.port, msg->user.account);
+                // 20250930新增：打印完整ACK数据，确认进入登录处理分支。是否收到正确的result和账号
+                printf("客户端收到登录ACK：type=%d, content=%s, result=%d, account=%s\n",
+                    msg->type, msg->content, msg->user.port, msg->user.account);
 
                 if(msg->user.port == 1) 
                 { // ACK=1成功
                     strncpy(g_chat_ctrl->cur_account, msg->user.account, 31);
-                    // 登录成功后请求在线用户列表
+                    // 登录成功后发送请求在线用户列表
                     NetMsg get_user_msg = {.type = MSG_GET_ONLINE_USER};
-                    Send_To_Server(&get_user_msg);
+
+                    //20250930新增日志，确认是否发送成功
+                    if(Send_To_Server(&get_user_msg) > 0) {
+                        printf("客户端：已发送请求在线用户列表\n");
+                    } else {
+                        printf("客户端：发送请求在线用户列表失败\n");
+                    }
+
+                    // 确认scr_friend有效后切换界面
                     // 20250930新增修改：确认scr_friend非空后再切换（防止空指针）
                     if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend))
                     {
+                        printf("客户端：开始切换到好友列表界面（scr_friend=%p）\n", g_chat_ctrl->scr_friend);
                         lv_scr_load(g_chat_ctrl->scr_friend);
                         printf("已切换到好友列表界面\n");
+
+                        // 20250930新增：强制刷新LVGL界面，解决8.2版本界面切换延迟问题
+                        lv_refr_now(lv_disp_get_default()); 
                     } else {
-                        printf("错误：scr_friend未初始化\n");
+                        printf("客户端错误：scr_friend未初始化（%p）\n", g_chat_ctrl->scr_friend);
                     }
                 } else 
                 { // ACK=0失败
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录失败：账号/密码错误");
+                    printf("客户端：登录失败，ACK=%d\n", msg->user.port);
                 }
             }        
             else if(strcmp(msg->content, "add_friend") == 0) //20250927新增
@@ -878,7 +908,7 @@ static void Handle_Server_Msg(NetMsg *msg)
             break;
         }
         case MSG_USER_LIST: 
-        {
+        {   
             // 20250929新增：释放旧列表项的账号内存（防止泄漏）--------------
             lv_obj_t *child;
 
@@ -899,7 +929,8 @@ static void Handle_Server_Msg(NetMsg *msg)
 
             char *token = strtok(msg->content, "|");
 
-            while(token) {
+            while(token) 
+            {
                 char account[32], nickname[32], signature[64], status[10];
                 sscanf(token, "%[^:]:%[^:]:%s", account, nickname, signature);
 
@@ -917,6 +948,9 @@ static void Handle_Server_Msg(NetMsg *msg)
             }
                 // 20250929新增：刷新提示
                 lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "好友列表已更新");
+
+                //20250930新增：确认 MSG_USER_LIST 的接收，收到服务器返回的用户列表
+                printf("客户端收到在线用户列表：%s\n", msg->content);
             break;
         }
         case MSG_SEND_MSG: {
@@ -959,9 +993,14 @@ static void Handle_Server_Msg(NetMsg *msg)
 // 接收服务器消息线程（避免阻塞UI）
 static void *Recv_Server_Msg(void *arg) 
 {
-
-    while(g_chat_ctrl && !g_chat_ctrl->exiting)
+    while(1) //20250930修改：替换g_chat_ctrl && !g_chat_ctrl->exiting
     {   
+        // 20250930新增关键：先检查g_chat_ctrl和exiting，避免访问NULL
+        if(!g_chat_ctrl || g_chat_ctrl->exiting) {
+            printf("Recv_Server_Msg：线程退出（g_chat_ctrl=%p, exiting=%d）\n", g_chat_ctrl, g_chat_ctrl ? g_chat_ctrl->exiting : 1);
+            break;
+        }
+
        // 20250929新增修改：堆分配消息内存（关键修改：避免栈变量销毁问题）-----
         NetMsg *msg = (NetMsg *)malloc(sizeof(NetMsg));
         if (!msg) { // 内存分配失败处理
@@ -969,11 +1008,13 @@ static void *Recv_Server_Msg(void *arg)
             sleep(1);
             continue;
         }
-        //20250928修改
-        memset(msg, 0, sizeof(*msg));
+
+        memset(msg, 0, sizeof(*msg)); 
+        //20250928修改 接收服务器消息
         int ret = recv(g_chat_ctrl->sockfd, msg, sizeof(NetMsg), 0);
         
         if(ret <= 0 || !g_chat_ctrl || g_chat_ctrl->exiting) {
+            printf("Recv_Server_Msg：接收失败（ret=%d），关闭连接\n", ret);//20250930新增
             free(msg); // 20250929新增：接收失败，释放内存
             break;
         }
@@ -1015,6 +1056,9 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
     Create_Friend_Scr();
     Create_Chat_Scr();
     Create_Setting_Scr(); // 新增设置界面
+
+    // 20250930新增日志：确认scr_friend创建后的值
+    printf("Chat_Room_Init：scr_friend=%p\n", g_chat_ctrl->scr_friend);
 
     // 根据参数决定是否立即连接服务器
     if(connect_now) 
