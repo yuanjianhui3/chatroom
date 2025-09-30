@@ -202,6 +202,15 @@ static void Login_Click(lv_event_t *e)
         lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录失败：连接异常");
         return;
     }
+
+    // 20250930新增：仅用于测试：在Login_Click函数末尾添加（测试后删除）
+    // 强制跳转到好友列表，确认界面是否正常
+    if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)){
+        lv_scr_load(g_chat_ctrl->scr_friend);
+        lv_refr_now(lv_disp_get_default());
+        printf("测试：强制跳转到好友列表\n");
+    }
+
 }
 
 // 创建登录界面（复用dir_look背景色：绿豆沙#C7EDCC）
