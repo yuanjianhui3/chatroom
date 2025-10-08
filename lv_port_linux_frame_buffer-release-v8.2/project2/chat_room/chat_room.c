@@ -123,9 +123,8 @@ static int Connect_Server() {
     }
 
     // 20250927新增连接服务器（超时处理：新手友好） 14.35
-    struct timeval timeout = {3, 0}; // 3秒超时
+    struct timeval timeout = {3, 0}; // 20251008新增修改：仅保留3秒发送超时（避免发送阻塞）
     setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     if(connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         perror("connect server failed");
@@ -899,8 +898,13 @@ static void Handle_Server_Msg(NetMsg *msg)
                         printf("客户端：scr_friend无效，重新创建\n");
                         Create_Friend_Scr(); // 强制重建
                     }
+
+                    // 20251008新增：日志确认逻辑执行，强制刷新并提示
+                    printf("客户端：登录成功，准备切换好友列表（scr_friend=%p，有效性：%d）\n", g_chat_ctrl->scr_friend, lv_obj_is_valid(g_chat_ctrl->scr_friend));
+
                     // 3. 切换并刷新界面
-                    if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+                    if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) 
+                    {
                         printf("客户端：切换到好友列表（scr_friend=%p）\n", g_chat_ctrl->scr_friend);
                         lv_scr_load(g_chat_ctrl->scr_friend);
                         // 强制刷新LVGL（解决8.2版本切换延迟）
@@ -909,8 +913,13 @@ static void Handle_Server_Msg(NetMsg *msg)
                             lv_refr_now(disp);
                             printf("客户端：界面已强制刷新\n");
                         }
+
+                        // 20251008新增：显示登录成功提示
+                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功！加载好友列表...");
+
                     } else {
                         lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录成功，好友界面创建失败");
+                        printf("客户端：好友界面无效，无法切换\n"); // 20251008新增：
                     }
                 } else 
                 { // ACK=0 登录失败
@@ -1091,12 +1100,20 @@ static void *Recv_Server_Msg(void *arg)
             free(msg);
             break;
         } else { // ret == -1
-            // 仅致命错误退出，EINTR（信号中断）可重试
-            if(errno == EINTR) {
-                printf("Recv_Server_Msg：recv被信号中断，重试\n");
+            // 仅致命错误退出，EINTR（信号中断）或临时错误可重试
+            if(errno == EINTR || errno == ETIMEDOUT) {
+                printf("Recv_Server_Msg：recv被信号中断/超时（errno=%d），重试\n", errno);
                 free(msg);
                 continue;
-            } else {
+            }
+            else if (errno == EAGAIN || errno == EWOULDBLOCK) 
+            {
+                // 20251008新增修改：超时，继续循环
+                printf("Recv_Server_Msg：接收超时，继续等待...\n");
+                free(msg);
+                continue;
+            }
+            else {
                 printf("Recv_Server_Msg：接收失败（ret=-1, errno=%d），关闭连接\n", errno);
                 free(msg);
                 break;
