@@ -15,7 +15,7 @@
 #define SERVER_PORT 8888    // 服务器端口（需与客户端一致）
 #define MAX_CLIENT 10       // 最大连接数
 #define MAX_USER 100        // 最大注册用户数
-#define USER_FILE "user.dat" // 20250929新增：用户数据存储文件（当前目录）
+#define USER_FILE "user_data.txt" // 20250929新增：用户数据存储文件（当前目录）20251008
 
 // ========== 类型定义 ==========
 // 协议类型（与客户端一致，区分不同请求/响应）
@@ -335,12 +335,7 @@ static void Handle_Group_Chat(NetMsg *msg, ClientInfo *client) {
 
     // 广播给所有在线客户端（排除发送者自己）
     pthread_mutex_lock(&data_mutex);
-    for (int i = 0; i < MAX_CLIENT; i++) {
-        if (clients[i].user.online == 1 && clients[i].sockfd != client->sockfd) 
-        {   //20250929新增修改：访问RegUser的online成员
-            send(clients[i].sockfd, &group_msg, sizeof(group_msg), 0);
-        }
-    }
+    Broadcast_Msg(&group_msg, client->sockfd);  // 20251008新增修改：调用已定义的广播函数
     pthread_mutex_unlock(&data_mutex);
     printf("群聊广播：%s（%s）→%s\n", client->user.nickname, group_id, msg_content);
 }
