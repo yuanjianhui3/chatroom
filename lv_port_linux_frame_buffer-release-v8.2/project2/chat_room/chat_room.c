@@ -361,9 +361,16 @@ static void Do_Register(lv_event_t *e)
     const char *pwd = lv_textarea_get_text(pwd_ta);
     const char *nick = lv_textarea_get_text(nick_ta);
 
-    // 20250930新增：输入非空校验
-    if(strlen(account) == 0 || strlen(pwd) == 0 || strlen(nick) == 0) {
-        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：账号/密码/昵称不能为空");
+
+    // 20250930新增：输入非空校验。20251008新增修改：细化非空判断
+    if(strlen(account) == 0) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：账号不能为空");
+        return;
+    } else if(strlen(pwd) == 0) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：密码不能为空");
+        return;
+    } else if(strlen(nick) == 0) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：昵称不能为空");
         return;
     }
 
@@ -545,13 +552,19 @@ static void Create_Setting_Scr() {
     // 20250929新增：头像路径输入框（索引3，新增）创建设置头像 UI------------------
     lv_obj_t *avatar_ta = Create_Textarea(g_chat_ctrl->scr_setting, "头像路径（如S:/avatar/1.png）");
 
-    lv_obj_set_size(avatar_ta, 300, 40); // 20250930新增：扩大宽度到300
-    lv_obj_align(avatar_ta, LV_ALIGN_TOP_MID, 0, 200);
+    lv_obj_set_size(avatar_ta, 350, 60); // 20250930新增：扩大宽度到300 20251008修改350
+
+    lv_textarea_set_one_line(avatar_ta, false); // 20251008新增：允许换行
+    lv_obj_set_scrollbar_mode(avatar_ta, LV_SCROLLBAR_MODE_AUTO);// 20251008新增：启用滚动
+
+    lv_obj_align(avatar_ta, LV_ALIGN_TOP_MID, 0, 220);  //20251008修改：200改为220，避开上方按钮
     Dir_Look_Bind_Textarea_Keyboard(avatar_ta, g_chat_ctrl->scr_setting);
     
     // 设置头像按钮（新增）
     lv_obj_t *avatar_btn = lv_btn_create(g_chat_ctrl->scr_setting);
-    lv_obj_align(avatar_btn, LV_ALIGN_TOP_MID, 190, 200);
+    lv_obj_set_size(avatar_btn, 120, 40);
+    // 20251008新增：按钮在文本框下方（y轴+60），避免重叠
+    lv_obj_align(avatar_btn, LV_ALIGN_TOP_MID, 0, 270); //20251008修改
     lv_obj_t *avatar_label = lv_label_create(avatar_btn);
     lv_label_set_text(avatar_label, "设置头像");
     lv_obj_set_style_text_font(avatar_label, &lv_myfont_kai_20, LV_STATE_DEFAULT);
@@ -698,8 +711,14 @@ static void Refresh_Friend_List(lv_event_t *e) {
 
 static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊界面
 
-    // 20250930新增：先删除已有标题（避免重叠）
-    if(g_chat_ctrl->group_chat_title) {
+    // 20251008新增：确保聊天界面有效
+    if(!g_chat_ctrl->scr_chat || !lv_obj_is_valid(g_chat_ctrl->scr_chat)) {
+        printf("Enter_Group_Chat：scr_chat无效\n");
+        return;
+    }
+
+    // 20250930新增：先删除已有标题（避免重叠）20251008修改
+    if(g_chat_ctrl->group_chat_title && lv_obj_is_valid(g_chat_ctrl->group_chat_title)) {
         lv_obj_del(g_chat_ctrl->group_chat_title);
     }
 
@@ -773,8 +792,8 @@ static void Create_Chat_Scr()
     lv_obj_align(chat_content, LV_ALIGN_TOP_MID, 0, 50);// 20250930修改：20-50下移，避免与标题重叠
 
     // 20250930修改：在 LVGL v8.2 中实现只读效果的方法
-    lv_textarea_set_one_line(chat_content, false); // 允许多行
-    lv_obj_clear_flag(chat_content, LV_OBJ_FLAG_CLICKABLE); // 禁用点击
+    lv_textarea_set_one_line(chat_content, false); // 允许换行
+    lv_obj_clear_flag(chat_content, LV_OBJ_FLAG_CLICKABLE); // 只读，禁用点击
     lv_obj_add_flag(chat_content, LV_OBJ_FLAG_EVENT_BUBBLE); // 事件冒泡
 
     lv_textarea_set_text(chat_content, "聊天内容..."); // 20250930修改：初始提示文本
@@ -872,28 +891,33 @@ static void Handle_Server_Msg(NetMsg *msg)
                     if(Send_To_Server(&get_user_msg) > 0) {
                         printf("客户端：已发送请求在线用户列表\n");
                     } else {
-                        printf("客户端：发送请求在线用户列表失败\n");
+                        printf("客户端：发送请求在线用户列表失败（sockfd=%d）\n", g_chat_ctrl->sockfd);
                     }
 
-                    // 确认scr_friend有效后切换界面
-                    // 20250930新增修改：确认scr_friend非空后再切换（防止空指针）
-                    if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend))
-                    {
-                        printf("客户端：开始切换到好友列表界面（scr_friend=%p）\n", g_chat_ctrl->scr_friend);
+                    // 20251008新增修改：2. 确保好友列表界面有效
+                    if(!g_chat_ctrl->scr_friend || !lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+                        printf("客户端：scr_friend无效，重新创建\n");
+                        Create_Friend_Scr(); // 强制重建
+                    }
+                    // 3. 切换并刷新界面
+                    if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+                        printf("客户端：切换到好友列表（scr_friend=%p）\n", g_chat_ctrl->scr_friend);
                         lv_scr_load(g_chat_ctrl->scr_friend);
-                        printf("已切换到好友列表界面\n");
-
-                        // 20250930新增：强制刷新LVGL界面，解决8.2版本界面切换延迟问题
-                        lv_refr_now(lv_disp_get_default()); 
+                        // 强制刷新LVGL（解决8.2版本切换延迟）
+                        lv_disp_t *disp = lv_disp_get_default();
+                        if(disp) {
+                            lv_refr_now(disp);
+                            printf("客户端：界面已强制刷新\n");
+                        }
                     } else {
-                        printf("客户端错误：scr_friend未初始化（%p）\n", g_chat_ctrl->scr_friend);
+                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录成功，好友界面创建失败");
                     }
                 } else 
-                { // ACK=0失败
+                { // ACK=0 登录失败
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录失败：账号/密码错误");
                     printf("客户端：登录失败，ACK=%d\n", msg->user.port);
                 }
-            }        
+            }
             else if(strcmp(msg->content, "add_friend") == 0) //20250927新增
             {
                 if(msg->user.port == 1) {
@@ -911,6 +935,35 @@ static void Handle_Server_Msg(NetMsg *msg)
                     Refresh_Friend_List(NULL); // 修改：自动刷新列表,传NULL，函数内部无参数依赖
                 } else {
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_setting, 0), "签名修改失败");
+                }
+                break;
+            }
+
+            // 20251008新增：处理头像设置ACK
+            else if(strcmp(msg->content, "set_avatar") == 0)
+            {
+                if(msg->user.port == 1) 
+                {
+                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_setting, 0), "头像设置成功");
+                    // 更新聊天窗口头像
+                    if(g_chat_ctrl->chat_avatar_btn && lv_obj_is_valid(g_chat_ctrl->chat_avatar_btn)) 
+                    {
+                        lv_obj_t *avatar_img = lv_obj_get_child(g_chat_ctrl->chat_avatar_btn, 0);
+                        if(avatar_img) 
+                        {
+                            // 无效路径用默认头像
+                            if(strlen(msg->user.avatar) == 0 || access(msg->user.avatar, R_OK) != 0) 
+                            {
+                                lv_img_set_src(avatar_img, "S:/8080icon_img.jpg");
+                            } else 
+                            {
+                                lv_img_set_src(avatar_img, msg->user.avatar);
+                            }
+                        }
+                    }
+                    Refresh_Friend_List(NULL); // 刷新好友列表头像
+                } else {
+                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_setting, 0), "头像设置失败");
                 }
                 break;
             }
@@ -1001,8 +1054,8 @@ static void Handle_Server_Msg(NetMsg *msg)
 
 // 接收服务器消息线程（避免阻塞UI）
 static void *Recv_Server_Msg(void *arg) 
-{
-    while(1) //20250930修改：替换g_chat_ctrl && !g_chat_ctrl->exiting
+{   //循环条件：g_chat_ctrl有效且未退出时继续//20250930修改：1替换g_chat_ctrl && !g_chat_ctrl->exiting 20251008
+    while(g_chat_ctrl && !g_chat_ctrl->exiting)
     {   
         // 20250930新增关键：先检查g_chat_ctrl和exiting，避免访问NULL
         if(!g_chat_ctrl || g_chat_ctrl->exiting) {
@@ -1022,24 +1075,33 @@ static void *Recv_Server_Msg(void *arg)
         //20250928修改 接收服务器消息
         int ret = recv(g_chat_ctrl->sockfd, msg, sizeof(NetMsg), 0);
         
-        if(ret <= 0 || !g_chat_ctrl || g_chat_ctrl->exiting) {
-            printf("Recv_Server_Msg：接收失败（ret=%d），关闭连接\n", ret);//20250930新增
-            free(msg); // 20250929新增：接收失败，释放内存
+        // 处理接收结果
+        if(ret > 0) {
+            // 接收成功，加锁处理UI（LVGL需主线程操作）
+            pthread_mutex_lock(&msg_mutex);
+            if(g_chat_ctrl && !g_chat_ctrl->exiting) {
+                lv_async_call(Lvgl_Update_UI, msg); // 异步更新UI
+            } else {
+                free(msg);
+            }
+            pthread_mutex_unlock(&msg_mutex);
+        } else if(ret == 0) {
+            // ret=0：服务器主动关闭连接
+            printf("Recv_Server_Msg：服务器断开连接（ret=0）\n");
+            free(msg);
             break;
+        } else { // ret == -1
+            // 仅致命错误退出，EINTR（信号中断）可重试
+            if(errno == EINTR) {
+                printf("Recv_Server_Msg：recv被信号中断，重试\n");
+                free(msg);
+                continue;
+            } else {
+                printf("Recv_Server_Msg：接收失败（ret=-1, errno=%d），关闭连接\n", errno);
+                free(msg);
+                break;
+            }
         }
-
-        // 线程安全处理UI（LVGL需在主线程更新，此处简化为直接操作）
-        pthread_mutex_lock(&msg_mutex);
-
-        // 再次检查，避免竞态条件
-        if(g_chat_ctrl && !g_chat_ctrl->exiting) 
-        {
-            lv_async_call(Lvgl_Update_UI, msg); //传递堆变量地址，异步执行时数据仍有效
-        } else {
-            free(msg); // 20250929新增：无需处理，直接释放
-        }
-
-        pthread_mutex_unlock(&msg_mutex);
     }
     printf("接收线程安全退出\n");
 

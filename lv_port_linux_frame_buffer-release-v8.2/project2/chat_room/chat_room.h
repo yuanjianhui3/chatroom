@@ -6,6 +6,9 @@
 #include "../../lvgl/lvgl.h"
 #include "../../dir_look/dir_look.h"  // 引用原有UI控制结构体
 
+// 20251008 新增：解决 errno 和 EINTR 未声明问题
+#include <errno.h>
+
 // 协议类型（区分不同请求/响应）
 typedef enum {
     MSG_REGISTER = 1,    // 注册请求

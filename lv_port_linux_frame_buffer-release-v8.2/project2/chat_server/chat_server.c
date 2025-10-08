@@ -89,14 +89,26 @@ pthread_mutex_t data_mutex;      // 数据保护互斥锁
 static void Load_Reg_Users() {
     FILE *fp = fopen(USER_FILE, "rb");
     if (fp == NULL) {
-        printf("用户数据文件不存在，初始化空列表\n");
+        printf("用户数据文件[%s]不存在，初始化空列表\n", USER_FILE);
         return;
     }
-    // 读取注册用户数
-    fread(&reg_user_count, sizeof(int), 1, fp);
+    // 20251008新增修改：读取注册用户数
+    size_t read_cnt = fread(&reg_user_count, sizeof(int), 1, fp);
+    if (read_cnt != 1) {
+        printf("读取用户数失败，初始化空列表\n");
+        fclose(fp);
+        return;
+    }
+
     if (reg_user_count > MAX_USER) reg_user_count = MAX_USER; // 防止溢出
-    // 读取用户数据
-    fread(reg_users, sizeof(RegUser), reg_user_count, fp);
+    
+    // 20251008新增修改：读取用户数据
+    read_cnt = fread(reg_users, sizeof(RegUser), reg_user_count, fp);
+    if (read_cnt != reg_user_count) {
+        printf("读取数据不完整（预期%d，实际%zu）\n", reg_user_count, read_cnt);
+        reg_user_count = read_cnt;
+    }
+
     fclose(fp);
     printf("加载成功：%d个注册用户\n", reg_user_count);
 }
@@ -105,12 +117,22 @@ static void Load_Reg_Users() {
 static void Save_Reg_Users() {
     FILE *fp = fopen(USER_FILE, "wb");
     if (fp == NULL) {
-        perror("保存用户数据失败");
+        perror("保存用户数据失败（fopen）");
         return;
     }
-    // 写入用户数+用户数据
-    fwrite(&reg_user_count, sizeof(int), 1, fp);
-    fwrite(reg_users, sizeof(RegUser), reg_user_count, fp);
+
+    // 20251008新增修改：写入用户数+用户数据
+    if (fwrite(&reg_user_count, sizeof(int), 1, fp) != 1) {
+        perror("写入用户数失败");
+        fclose(fp);
+        return;
+    }
+    if (fwrite(reg_users, sizeof(RegUser), reg_user_count, fp) != reg_user_count) {
+        perror("写入数据不完整");
+        fclose(fp);
+        return;
+    }
+
     fclose(fp);
     printf("保存成功：%d个注册用户\n", reg_user_count);
 }   //-----------------------------
@@ -143,7 +165,10 @@ static void Get_Online_User_Str(char *buf, int buf_len) {
         if(clients[i].user.online) {
              // 新增：添加在线状态标识（格式：账号:昵称:签名:在线|）
             char temp[256];
-            snprintf(temp, 256, "%s:%s:%s:在线|", clients[i].user.account, clients[i].user.nickname,clients[i].user.signature);
+            // 20251008新增修改：根据实际在线状态显示
+            const char *status = clients[i].user.online ? "在线" : "离线";
+            snprintf(temp, 256, "%s:%s:%s:%s|", clients[i].user.account, clients[i].user.nickname, clients[i].user.signature, status);
+
             strncat(buf, temp, buf_len - strlen(buf) - 1);
         }
     }
@@ -321,8 +346,8 @@ static void Handle_Set_Avatar(NetMsg *msg, ClientInfo *client) {
 // 20250929新增：群聊消息处理（广播给所有在线客户端）
 static void Handle_Group_Chat(NetMsg *msg, ClientInfo *client) {
     // 解析群ID（此处简化为“default”默认群）
-    char group_id[32], msg_content[224];
-    if (sscanf(msg->content, "%[^:]:%s", group_id, msg_content) != 2) {
+    char group_id[32], msg_content[224];    //20251008修改后：支持含空格消息，限制长度避免溢出
+    if (sscanf(msg->content, "%31[^:]:%223[^\n]", group_id, msg_content) != 2) {
         printf("群聊消息格式错误：%s\n", msg->content);
         return;
     }
