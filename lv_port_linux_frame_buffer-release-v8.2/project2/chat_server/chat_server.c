@@ -78,6 +78,9 @@ typedef struct {
     RegUser user; // 对应的注册用户
 } ClientInfo;
 
+// 20251009新增修改函数声明
+static void Get_Online_User_Str(char *buf, int buf_len, ClientInfo *client);
+
 // 全局数据（需互斥锁保护）
 ClientInfo clients[MAX_CLIENT];  // 客户端列表
 RegUser reg_users[MAX_USER];     // 注册用户列表
@@ -159,7 +162,7 @@ static ClientInfo *Find_Online_Client(const char *account) {
 }
 
 // 生成在线用户列表字符串（格式：账号:昵称:签名|...）
-static void Get_Online_User_Str(char *buf, int buf_len) {
+static void Get_Online_User_Str(char *buf, int buf_len, ClientInfo *client) {
     buf[0] = '\0';
     for(int i=0; i<client_count; i++) {
         if(clients[i].user.online) {
@@ -173,8 +176,22 @@ static void Get_Online_User_Str(char *buf, int buf_len) {
             strncat(buf, temp, buf_len - strlen(buf) - 1);
         }
     }
+
+    // 20251009新增：若无其他在线用户，仅返回当前请求用户（避免客户端列表为空）
+    if(strlen(buf) == 0 && client != NULL) {
+        char temp[256];
+        const char *status = "在线";
+        const char *avatar = strlen(client->user.avatar) ? client->user.avatar : "S:/8080icon_img.jpg";
+        snprintf(temp, 256, "%s:%s:%s:%s:%s", 
+                 client->user.account, 
+                 client->user.nickname, 
+                 client->user.signature, 
+                 avatar, 
+                 status);
+        strncat(buf, temp, buf_len - strlen(buf) - 1);
+
     // 移除最后一个'|'
-    if(strlen(buf) > 0) {
+    } else if(strlen(buf) > 0) {
         buf[strlen(buf)-1] = '\0';
     }
 }
@@ -274,7 +291,7 @@ static void Handle_Get_Online_User(ClientInfo *client) {
     NetMsg user_msg;
     memset(&user_msg, 0, sizeof(user_msg));
     user_msg.type = MSG_USER_LIST;
-    Get_Online_User_Str(user_msg.content, 256);
+    Get_Online_User_Str(user_msg.content, 256, client); // 20251009新增：传入client
 
     //验证在线用户列表请求是否成功 // 20250928新增log，打印返回的用户列表
     printf("Handle_Get_Online_User：客户端%s请求在线用户列表，列表：%s\n",client->user.account, user_msg.content);

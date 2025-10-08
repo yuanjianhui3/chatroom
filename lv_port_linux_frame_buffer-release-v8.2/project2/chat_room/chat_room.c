@@ -639,14 +639,25 @@ static void Create_Friend_Scr()
     
     lv_obj_set_style_bg_color(g_chat_ctrl->scr_friend, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);
 
+    // 20251009新增：清除隐藏标志，确保界面可见
+    lv_obj_clear_flag(g_chat_ctrl->scr_friend, LV_OBJ_FLAG_HIDDEN);
+
     // 标题
     Create_Label(g_chat_ctrl->scr_friend, "好友列表", 20);
 
     // 好友列表（列表控件）
     g_chat_ctrl->friend_list = lv_list_create(g_chat_ctrl->scr_friend);
+
+    if (g_chat_ctrl->friend_list == NULL) 
+    {   //20251009新增
+        printf("Create_Friend_Scr：创建好友列表控件失败！\n");
+        return;
+    }
+
     lv_obj_set_size(g_chat_ctrl->friend_list, 300, 350);// 高度350，超出自动滚动
     lv_obj_align(g_chat_ctrl->friend_list, LV_ALIGN_TOP_MID, 0, 60);
     lv_obj_set_style_bg_color(g_chat_ctrl->friend_list, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);//20250927新增
+    printf("Create_Friend_Scr：好友列表控件创建成功（地址：%p）\n", g_chat_ctrl->friend_list);      //20251009新增
 
     // 返回首页按钮
     lv_obj_t *home_btn = lv_btn_create(g_chat_ctrl->scr_friend);
@@ -940,6 +951,45 @@ static void Handle_Server_Msg(NetMsg *msg)
                         printf("客户端：发送请求在线用户列表失败（sockfd=%d）\n", g_chat_ctrl->sockfd);
                         lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功，获取好友列表失败");
                     }
+
+                    // 20251008新增：手动添加当前登录用户到好友列表（兜底逻辑，无在线用户也显示）
+                    if(g_chat_ctrl->friend_list && lv_obj_is_valid(g_chat_ctrl->friend_list)) {
+                        // 清空原有列表（避免重复）
+                        lv_obj_clean(g_chat_ctrl->friend_list);
+
+                        // 构造当前用户信息（账号+默认头像）
+                        typedef struct { char account[32]; char avatar[64]; } FriendInfo;
+                        FriendInfo *self_info = (FriendInfo *)malloc(sizeof(FriendInfo));
+                        if (self_info == NULL) {
+                            printf("客户端：分配当前用户信息内存失败\n");
+                            return;
+                        }
+                        memset(self_info, 0, sizeof(FriendInfo));
+                        strncpy(self_info->account, g_chat_ctrl->cur_account, sizeof(self_info->account)-1);
+                        strncpy(self_info->avatar, "S:/8080icon_img.jpg", sizeof(self_info->avatar)-1); // 复用默认头像
+
+                        // 构造列表项文本（显示账号+状态）
+                        char item_text[120] = {0};
+                        snprintf(item_text, sizeof(item_text), "%s(当前用户)[在线]", g_chat_ctrl->cur_account);
+
+                        // 添加列表项到好友列表
+                        lv_obj_t *self_item = lv_list_add_btn(g_chat_ctrl->friend_list, NULL, item_text);
+                        if (self_item != NULL) {
+                            lv_obj_set_user_data(self_item, self_info); // 绑定用户信息（用于后续聊天）
+                            lv_obj_add_event_cb(self_item, Friend_Click, LV_EVENT_CLICKED, NULL); // 绑定点击事件
+                            printf("客户端：已添加当前用户到好友列表（账号：%s）\n", g_chat_ctrl->cur_account);
+                        } else {
+                            free(self_info);
+                            printf("客户端：创建当前用户列表项失败\n");
+                        }
+
+                        // 更新界面提示
+                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功！当前用户已显示");
+                    } else {
+                        printf("客户端：好友列表控件无效，无法添加当前用户\n");
+                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功，好友列表控件异常");
+                    }
+
                 } else 
                 { // ACK=0 登录失败
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录失败：账号/密码错误");
@@ -1002,11 +1052,13 @@ static void Handle_Server_Msg(NetMsg *msg)
             // 20251008新增：无在线用户时，手动添加当前登录用户
             if(strlen(msg->content) == 0) {
                 printf("客户端：无在线用户，添加当前用户到列表\n");
-                char self_info[120];
-                snprintf(self_info, 120, "%s:%s:%s:S:/8080icon_img.jpg:在线", 
+                char self_info[256];
+                // 20251009修改：格式：账号:昵称:签名:头像:状态（匹配服务器返回格式）
+                snprintf(self_info, 256, "%s:%s:%s:%s:在线", 
                          g_chat_ctrl->cur_account,  // 账号
                          g_chat_ctrl->cur_account,  // 昵称（默认用账号）
-                         "当前用户");               // 签名
+                         "当前用户",               // 签名
+                         "S:/8080icon_img.jpg");   // 头像（默认路径）
                 strncpy(msg->content, self_info, sizeof(msg->content)-1);
             }
         
@@ -1181,6 +1233,12 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
     Create_Register_Scr();
     Create_Chat_Scr();
     Create_Setting_Scr(); // 新增设置界面
+
+    // 20251009新增：打印初始化状态日志
+    printf("Chat_Room_Init：界面初始化完成\n");
+    printf("  - scr_friend（好友界面）：%p\n", g_chat_ctrl->scr_friend);
+    printf("  - friend_list（好友列表控件）：%p\n", g_chat_ctrl->friend_list);
+    printf("  - scr_chat（聊天界面）：%p\n", g_chat_ctrl->scr_chat);
 
     // 20251008新增：强制设置好友列表界面为有效
     if(g_chat_ctrl->scr_friend) {
