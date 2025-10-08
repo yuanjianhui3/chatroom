@@ -163,11 +163,12 @@ static void Get_Online_User_Str(char *buf, int buf_len) {
     buf[0] = '\0';
     for(int i=0; i<client_count; i++) {
         if(clients[i].user.online) {
-             // 新增：添加在线状态标识（格式：账号:昵称:签名:在线|）
+             // 新增：添加在线状态标识（账号:昵称:签名:头像:状态（20251008新增头像字段））
             char temp[256];
             // 20251008新增修改：根据实际在线状态显示
             const char *status = clients[i].user.online ? "在线" : "离线";
-            snprintf(temp, 256, "%s:%s:%s:%s|", clients[i].user.account, clients[i].user.nickname, clients[i].user.signature, status);
+            const char *avatar = strlen(clients[i].user.avatar) ? clients[i].user.avatar : "S:/8080icon_img.jpg"; //20251008新增
+            snprintf(temp, 256, "%s:%s:%s:%s:%s|", clients[i].user.account, clients[i].user.nickname, clients[i].user.signature,avatar, status);
 
             strncat(buf, temp, buf_len - strlen(buf) - 1);
         }
@@ -235,6 +236,7 @@ static void Handle_Register(NetMsg *msg, ClientInfo *client) {
 
         new_user->online = 0;
         new_user->friend_cnt = 0;
+        
         reg_users[reg_user_count++] = *new_user;   // 复制到注册用户列表加*
 
         Save_Reg_Users(); // 20250929新增：保存注册用户

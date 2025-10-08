@@ -64,6 +64,7 @@ typedef struct {
     lv_obj_t *chat_content_ta; // 20250930新增：聊天内容文本框（单聊/群聊共用）
     lv_obj_t *chat_avatar_btn; // 新增：聊天窗口头像按钮
     lv_obj_t *group_chat_title; // 新增：群聊标题（避免重叠）
+    lv_obj_t *chat_title; // 20251008新增：单聊标题（避免重叠）
 
 } CHAT_CTRL, *CHAT_CTRL_P;
 

@@ -448,24 +448,46 @@ static void Friend_Click(lv_event_t *e)
 {
     lv_obj_t *item = lv_event_get_current_target(e);
 
-    char *friend_account = (char *)lv_obj_get_user_data(item); // 20250929新增：获取好友账号
-    if (friend_account == NULL) return;
+    // 20251008新增：获取好友信息（账号+头像）
+    typedef struct { char account[32]; char avatar[64]; } FriendInfo;
+    FriendInfo *info = lv_obj_get_user_data(item);
+    if (!info) return;
 
+    // 获取好友昵称
     lv_obj_t *label = lv_obj_get_child(item, 0); // 获取按钮中的第一个子对象（标签）
     const char *friend_name = lv_label_get_text(label);
 
-    printf("chat with %s (account: %s)\n", friend_name, friend_account);// 20250929新增修改（补充格式符%s，匹配2个参数）
-
-    // 20250929新增：存储当前聊天好友账号----------------------
-    strncpy(g_chat_ctrl->chat_friend_account, friend_account, sizeof(g_chat_ctrl->chat_friend_account)-1);
+    // 20250929新增：存储当前聊天好友账号----------------------20251008修改
+    strncpy(g_chat_ctrl->chat_friend_account, info->account, sizeof(g_chat_ctrl->chat_friend_account)-1);
     
-    // 新增：更新聊天窗口标题（需先在Create_Chat_Scr创建标题标签）
-    lv_obj_t *chat_title = lv_label_create(g_chat_ctrl->scr_chat);
-    lv_label_set_text_fmt(chat_title, "聊天：%s", friend_name);
-    lv_obj_align(chat_title, LV_ALIGN_TOP_MID, 0, 20);
-    lv_obj_set_style_text_font(chat_title, &lv_myfont_kai_20, LV_STATE_DEFAULT);
+    // 1. 更新聊天标题（先删除旧标题避免重叠）
+    if(g_chat_ctrl->chat_title && lv_obj_is_valid(g_chat_ctrl->chat_title)) {
+        lv_obj_del(g_chat_ctrl->chat_title);
+    }
 
+    // 新增：更新聊天窗口标题 20251008修改
+    g_chat_ctrl->chat_title = lv_label_create(g_chat_ctrl->scr_chat);
+    lv_label_set_text_fmt( g_chat_ctrl->chat_title , "聊天：%s", friend_name);
+    lv_obj_align( g_chat_ctrl->chat_title , LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_set_style_text_font( g_chat_ctrl->chat_title , &lv_myfont_kai_20, LV_STATE_DEFAULT);
+
+    //20251009新增：2.更新好友头像（无效路径用默认头像）
+    lv_obj_t *avatar_img = lv_obj_get_child(g_chat_ctrl->chat_avatar_btn, 0);
+    if(avatar_img) {
+        if(strlen(info->avatar) == 0 || access(info->avatar, R_OK) != 0) {
+            lv_img_set_src(avatar_img, "S:/8080icon_img.jpg");
+        } else {
+            lv_img_set_src(avatar_img, info->avatar);
+        }
+    }
+
+    // 3. 清空历史聊天记录
+    lv_textarea_set_text(g_chat_ctrl->chat_content_ta, "");
+
+    // 4. 切换到聊天界面并强制刷新
     lv_scr_load(g_chat_ctrl->scr_chat);
+    lv_refr_now(lv_disp_get_default());
+    printf("进入单聊：%s（账号：%s）\n", friend_name, info->account);
 }
 
 // ----20250927新增--------------------
@@ -906,6 +928,8 @@ static void Handle_Server_Msg(NetMsg *msg)
                     if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) 
                     {
                         printf("客户端：切换到好友列表（scr_friend=%p）\n", g_chat_ctrl->scr_friend);
+                        
+                        lv_obj_clear_flag(g_chat_ctrl->scr_friend, LV_OBJ_FLAG_HIDDEN); // 20251008新增：确保不隐藏
                         lv_scr_load(g_chat_ctrl->scr_friend);
                         // 强制刷新LVGL（解决8.2版本切换延迟）
                         lv_disp_t *disp = lv_disp_get_default();
@@ -980,17 +1004,28 @@ static void Handle_Server_Msg(NetMsg *msg)
         }
         case MSG_USER_LIST: 
         {   
+            // 20251008新增：无在线用户时，手动添加当前登录用户
+            if(strlen(msg->content) == 0) {
+                printf("客户端：无在线用户，添加当前用户到列表\n");
+                char self_info[120];
+                snprintf(self_info, 120, "%s:%s:%s:S:/8080icon_img.jpg:在线", 
+                         g_chat_ctrl->cur_account,  // 账号
+                         g_chat_ctrl->cur_account,  // 昵称（默认用账号）
+                         "当前用户");               // 签名
+                strncpy(msg->content, self_info, sizeof(msg->content)-1);
+            }
+        
             // 20250929新增：释放旧列表项的账号内存（防止泄漏）--------------
             lv_obj_t *child;
 
-            // 1. 获取好友列表的子对象数量（LVGL v8.2支持）
+            // 1. 获取好友列表的子对象数量
             uint32_t child_count = lv_obj_get_child_cnt(g_chat_ctrl->friend_list);
             // 2. 循环遍历所有子对象
             for (uint32_t i = 0; i < child_count; i++) {
                 child = lv_obj_get_child(g_chat_ctrl->friend_list, i); // 获取第i个子对象
                 char *acc = (char *)lv_obj_get_user_data(child);
                 if (acc != NULL) 
-                {   free(acc);
+                {   free(acc);// 释放之前存储的好友信息（防止泄漏）
                     lv_obj_set_user_data(child, NULL); 
                 }
             }//-------------------------------------------------------
@@ -1002,19 +1037,26 @@ static void Handle_Server_Msg(NetMsg *msg)
 
             while(token) 
             {
-                char account[32], nickname[32], signature[64], status[10];
+                char account[32], nickname[32], signature[64], avatar[64], status[10];
                 sscanf(token, "%[^:]:%[^:]:%s", account, nickname, signature);
 
-                // 20250930新增：解析状态字段
-                sscanf(token, "%[^:]:%[^:]:%[^:]:%s", account, nickname, signature, status);
+                // 20250930新增：解析状态字段 20251008修改解析格式：账号:昵称:签名:头像:状态（服务器端已修改）
+                sscanf(token, "%[^:]:%[^:]:%[^:]:%[^:]:%s", account, nickname, signature, avatar, status);
 
                 // 添加列表项（显示昵称+签名+状态）20250927新增显示在线状态（MSG_USER_LIST仅返回在线用户）
                 char item_text[120];    //20250930修改100-120
                 snprintf(item_text, 120, "%s(%s)[%s]", nickname, signature, status);    //20250930新增status
 
+                // 添加列表项并存储好友信息（账号+头像）
                 lv_obj_t *item = lv_list_add_btn(g_chat_ctrl->friend_list, NULL, item_text);
-                lv_obj_set_user_data(item, strdup(account)); // 20250929新增：存储好友账号（后续聊天用）
-                lv_obj_add_event_cb(item, Friend_Click, LV_EVENT_CLICKED, NULL);
+
+                typedef struct { char account[32]; char avatar[64]; } FriendInfo;
+                FriendInfo *info = malloc(sizeof(FriendInfo));
+                strncpy(info->account, account, sizeof(info->account)-1);
+                strncpy(info->avatar, avatar, sizeof(info->avatar)-1);
+                lv_obj_set_user_data(item, info);
+
+                lv_obj_add_event_cb(item, Friend_Click, LV_EVENT_CLICKED, NULL);// 绑定点击事件（进入单聊）
                 token = strtok(NULL, "|");
             }
                 // 20250929新增：刷新提示
