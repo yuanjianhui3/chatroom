@@ -203,7 +203,6 @@ static void Send_ACK(int sockfd, const char *type, int result, RegUser *user) {
         strncpy(ack.user.nickname, user->nickname, sizeof(ack.user.nickname)-1);
         strncpy(ack.user.signature, user->signature, sizeof(ack.user.signature)-1);
         strncpy(ack.user.avatar, user->avatar, sizeof(ack.user.avatar)-1);
-        ack.user.online = user->online;
     }
 
     send(sockfd, &ack, sizeof(ack), 0);
@@ -236,7 +235,7 @@ static void Handle_Register(NetMsg *msg, ClientInfo *client) {
 
         new_user->online = 0;
         new_user->friend_cnt = 0;
-        
+
         reg_users[reg_user_count++] = *new_user;   // 复制到注册用户列表加*
 
         Save_Reg_Users(); // 20250929新增：保存注册用户

@@ -905,45 +905,40 @@ static void Handle_Server_Msg(NetMsg *msg)
                 if(msg->user.port == 1) 
                 { // ACK=1成功
                     strncpy(g_chat_ctrl->cur_account, msg->user.account, 31);
-                    // 登录成功后发送请求在线用户列表
-                    NetMsg get_user_msg = {.type = MSG_GET_ONLINE_USER};
+                    printf("客户端：登录成功，账号：%s\n", g_chat_ctrl->cur_account);
 
-                    //20250930新增日志，确认是否发送成功
+                    // 20251008新增大改：1. 优先确保好友列表界面有效（强制重建，避免初始化残留问题）
+                    if(!g_chat_ctrl->scr_friend || !lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+                        printf("客户端：scr_friend无效，重新创建\n");
+                        Create_Friend_Scr(); // 强制重建好友界面
+                    }
+                
+                    // 2. 立即切换到好友列表（核心修复：不等待用户列表，后续自动更新）
+                    if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) 
+                    {
+                        lv_obj_clear_flag(g_chat_ctrl->scr_friend, LV_OBJ_FLAG_HIDDEN); // 清除隐藏标志
+                        lv_scr_load(g_chat_ctrl->scr_friend);
+                        // 强制刷新LVGL8.2（解决界面不显示/延迟问题，LVGL8.2必须调用）
+                        lv_disp_t *disp = lv_disp_get_default();
+                        if(disp) {
+                            lv_refr_now(disp);
+                            printf("客户端：好友列表界面已加载并强制刷新\n");
+                        }
+                        // 显示登录成功提示
+                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功！正在加载好友...");
+                    } else {
+                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录成功，好友界面创建失败");
+                        printf("客户端：好友界面无效，无法切换\n");
+                        break; // 界面无效则退出处理
+                    }
+                
+                    // 3. 发送请求在线用户列表（切换后发送，不阻塞界面）
+                    NetMsg get_user_msg = {.type = MSG_GET_ONLINE_USER};
                     if(Send_To_Server(&get_user_msg) > 0) {
                         printf("客户端：已发送请求在线用户列表\n");
                     } else {
                         printf("客户端：发送请求在线用户列表失败（sockfd=%d）\n", g_chat_ctrl->sockfd);
-                    }
-
-                    // 20251008新增修改：2. 确保好友列表界面有效
-                    if(!g_chat_ctrl->scr_friend || !lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
-                        printf("客户端：scr_friend无效，重新创建\n");
-                        Create_Friend_Scr(); // 强制重建
-                    }
-
-                    // 20251008新增：日志确认逻辑执行，强制刷新并提示
-                    printf("客户端：登录成功，准备切换好友列表（scr_friend=%p，有效性：%d）\n", g_chat_ctrl->scr_friend, lv_obj_is_valid(g_chat_ctrl->scr_friend));
-
-                    // 3. 切换并刷新界面
-                    if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) 
-                    {
-                        printf("客户端：切换到好友列表（scr_friend=%p）\n", g_chat_ctrl->scr_friend);
-                        
-                        lv_obj_clear_flag(g_chat_ctrl->scr_friend, LV_OBJ_FLAG_HIDDEN); // 20251008新增：确保不隐藏
-                        lv_scr_load(g_chat_ctrl->scr_friend);
-                        // 强制刷新LVGL（解决8.2版本切换延迟）
-                        lv_disp_t *disp = lv_disp_get_default();
-                        if(disp) {
-                            lv_refr_now(disp);
-                            printf("客户端：界面已强制刷新\n");
-                        }
-
-                        // 20251008新增：显示登录成功提示
-                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功！加载好友列表...");
-
-                    } else {
-                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录成功，好友界面创建失败");
-                        printf("客户端：好友界面无效，无法切换\n"); // 20251008新增：
+                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功，获取好友列表失败");
                     }
                 } else 
                 { // ACK=0 登录失败
@@ -1181,11 +1176,16 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
     pthread_mutex_init(&msg_mutex, NULL);
 
     // 创建所有界面
+    Create_Friend_Scr();
     Create_Login_Scr();
     Create_Register_Scr();
-    Create_Friend_Scr();
     Create_Chat_Scr();
     Create_Setting_Scr(); // 新增设置界面
+
+    // 20251008新增：强制设置好友列表界面为有效
+    if(g_chat_ctrl->scr_friend) {
+        lv_obj_clear_flag(g_chat_ctrl->scr_friend, LV_OBJ_FLAG_HIDDEN);
+    }
 
     // 20250930新增日志：确认scr_friend创建后的值
     printf("Chat_Room_Init：scr_friend=%p\n", g_chat_ctrl->scr_friend);
