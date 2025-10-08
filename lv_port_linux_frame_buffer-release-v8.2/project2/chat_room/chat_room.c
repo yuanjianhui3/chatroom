@@ -890,6 +890,12 @@ static void Lvgl_Update_UI(void *param)
 // 处理服务器应答消息
 static void Handle_Server_Msg(NetMsg *msg) 
 {
+    // 20251009新增：过滤无效消息类型（MSG_REGISTER=1~MSG_LOGOUT=11）
+    if(msg->type < MSG_REGISTER || msg->type > MSG_LOGOUT) {
+        printf("客户端：过滤无效消息类型（%d），忽略处理\n", msg->type);
+        return;
+    }
+
     switch(msg->type) 
     {
         case MSG_ACK: 
@@ -918,78 +924,75 @@ static void Handle_Server_Msg(NetMsg *msg)
                     strncpy(g_chat_ctrl->cur_account, msg->user.account, 31);
                     printf("客户端：登录成功，账号：%s\n", g_chat_ctrl->cur_account);
 
-                    // 20251008新增大改：1. 优先确保好友列表界面有效（强制重建，避免初始化残留问题）
+                    // 20251009新增大改：1. 强制重建好友界面（彻底解决初始化残留问题）
+                    if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+                        lv_obj_del(g_chat_ctrl->scr_friend); // 删除旧界面
+                    }
+                    Create_Friend_Scr(); // 重新创建好友界面
                     if(!g_chat_ctrl->scr_friend || !lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
-                        printf("客户端：scr_friend无效，重新创建\n");
-                        Create_Friend_Scr(); // 强制重建好友界面
+                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录成功，好友界面重建失败");
+                        printf("客户端：好友界面重建失败，无法切换\n");
+                        break;
                     }
                 
-                    // 2. 立即切换到好友列表（核心修复：不等待用户列表，后续自动更新）
-                    if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) 
-                    {
-                        lv_obj_clear_flag(g_chat_ctrl->scr_friend, LV_OBJ_FLAG_HIDDEN); // 清除隐藏标志
-                        lv_scr_load(g_chat_ctrl->scr_friend);
-                        // 强制刷新LVGL8.2（解决界面不显示/延迟问题，LVGL8.2必须调用）
-                        lv_disp_t *disp = lv_disp_get_default();
-                        if(disp) {
-                            lv_refr_now(disp);
-                            printf("客户端：好友列表界面已加载并强制刷新\n");
-                        }
-                        // 显示登录成功提示
-                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功！正在加载好友...");
+                    // 2. 强制切换界面并刷新（LVGL8.2必须双重刷新）
+                    lv_obj_clear_flag(g_chat_ctrl->scr_friend, LV_OBJ_FLAG_HIDDEN);
+                    lv_scr_load(g_chat_ctrl->scr_friend); // 切换界面
+                    lv_disp_t *disp = lv_disp_get_default();
+                    if(disp) {
+                        lv_refr_now(disp); // 强制刷新显示
+                        printf("客户端：好友列表界面已切换并强制刷新\n");
                     } else {
-                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录成功，好友界面创建失败");
-                        printf("客户端：好友界面无效，无法切换\n");
-                        break; // 界面无效则退出处理
+                        // 备选方案：无默认显示设备时，手动触发LVGL任务处理
+                        printf("客户端：无默认显示设备，触发LVGL任务强制刷新\n");
+                        lv_timer_handler(); // 强制处理LVGL事件
+                        usleep(100000); // 延迟100ms确保刷新生效
+                        lv_timer_handler();
                     }
                 
-                    // 3. 发送请求在线用户列表（切换后发送，不阻塞界面）
+                    // 3. 显示登录成功提示（确保用户看到反馈）
+                    lv_obj_t *friend_status_label = lv_obj_get_child(g_chat_ctrl->scr_friend, 0);
+                    if(friend_status_label) {
+                        lv_label_set_text(friend_status_label, "登录成功！当前用户已显示");
+                    }
+                
+                    // 4. 发送请求在线用户列表（不阻塞界面）
                     NetMsg get_user_msg = {.type = MSG_GET_ONLINE_USER};
                     if(Send_To_Server(&get_user_msg) > 0) {
                         printf("客户端：已发送请求在线用户列表\n");
                     } else {
-                        printf("客户端：发送请求在线用户列表失败（sockfd=%d）\n", g_chat_ctrl->sockfd);
-                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功，获取好友列表失败");
+                        printf("客户端：发送列表请求失败（sockfd=%d）\n", g_chat_ctrl->sockfd);
+                        if(friend_status_label) {
+                            lv_label_set_text(friend_status_label, "登录成功，获取好友列表失败");
+                        }
                     }
-
-                    // 20251008新增：手动添加当前登录用户到好友列表（兜底逻辑，无在线用户也显示）
-                    if(g_chat_ctrl->friend_list && lv_obj_is_valid(g_chat_ctrl->friend_list)) {
-                        // 清空原有列表（避免重复）
-                        lv_obj_clean(g_chat_ctrl->friend_list);
-
-                        // 构造当前用户信息（账号+默认头像）
+                
+                    // 5. 手动添加当前用户（兜底，确保列表有内容）
+                    if(g_chat_ctrl->friend_list && lv_obj_is_valid(g_chat_ctrl->friend_list)) 
+                    {
+                        lv_obj_clean(g_chat_ctrl->friend_list); // 清空旧列表
                         typedef struct { char account[32]; char avatar[64]; } FriendInfo;
-                        FriendInfo *self_info = (FriendInfo *)malloc(sizeof(FriendInfo));
-                        if (self_info == NULL) {
-                            printf("客户端：分配当前用户信息内存失败\n");
-                            return;
-                        }
-                        memset(self_info, 0, sizeof(FriendInfo));
-                        strncpy(self_info->account, g_chat_ctrl->cur_account, sizeof(self_info->account)-1);
-                        strncpy(self_info->avatar, "S:/8080icon_img.jpg", sizeof(self_info->avatar)-1); // 复用默认头像
-
-                        // 构造列表项文本（显示账号+状态）
-                        char item_text[120] = {0};
-                        snprintf(item_text, sizeof(item_text), "%s(当前用户)[在线]", g_chat_ctrl->cur_account);
-
-                        // 添加列表项到好友列表
-                        lv_obj_t *self_item = lv_list_add_btn(g_chat_ctrl->friend_list, NULL, item_text);
-                        if (self_item != NULL) {
-                            lv_obj_set_user_data(self_item, self_info); // 绑定用户信息（用于后续聊天）
-                            lv_obj_add_event_cb(self_item, Friend_Click, LV_EVENT_CLICKED, NULL); // 绑定点击事件
-                            printf("客户端：已添加当前用户到好友列表（账号：%s）\n", g_chat_ctrl->cur_account);
+                        FriendInfo *self_info = malloc(sizeof(FriendInfo));
+                        if (self_info) {
+                            memset(self_info, 0, sizeof(FriendInfo));
+                            strncpy(self_info->account, g_chat_ctrl->cur_account, 31);
+                            strncpy(self_info->avatar, "S:/8080icon_img.jpg", 63);
+                            // 创建列表项
+                            char item_text[120];
+                            snprintf(item_text, 120, "%s(当前用户)[在线]", g_chat_ctrl->cur_account);
+                            lv_obj_t *self_item = lv_list_add_btn(g_chat_ctrl->friend_list, NULL, item_text);
+                            if (self_item) {
+                                lv_obj_set_user_data(self_item, self_info);
+                                lv_obj_add_event_cb(self_item, Friend_Click, LV_EVENT_CLICKED, NULL);
+                                printf("客户端：已添加当前用户到好友列表\n");
+                            } else {
+                                free(self_info);
+                                printf("客户端：创建当前用户列表项失败\n");
+                            }
                         } else {
-                            free(self_info);
-                            printf("客户端：创建当前用户列表项失败\n");
+                            printf("客户端：分配当前用户信息内存失败\n");
                         }
-
-                        // 更新界面提示
-                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功！当前用户已显示");
-                    } else {
-                        printf("客户端：好友列表控件无效，无法添加当前用户\n");
-                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "登录成功，好友列表控件异常");
                     }
-
                 } else 
                 { // ACK=0 登录失败
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录失败：账号/密码错误");
@@ -1174,7 +1177,11 @@ static void *Recv_Server_Msg(void *arg)
         int ret = recv(g_chat_ctrl->sockfd, msg, sizeof(NetMsg), 0);
         
         // 处理接收结果
-        if(ret > 0) {
+        if(ret > 0) 
+        {
+            // 20251009新增：打印接收的消息详情（确认解析是否正确）
+            printf("客户端收到消息：type=%d（MSG_ACK=3）, content=%s, user.port=%d\n",  msg->type, msg->content, msg->user.port);
+            
             // 接收成功，加锁处理UI（LVGL需主线程操作）
             pthread_mutex_lock(&msg_mutex);
             if(g_chat_ctrl && !g_chat_ctrl->exiting) {

@@ -26,6 +26,9 @@ typedef enum {
 
 } MsgType;
 
+// 20251009新增：强制1字节对齐（解决网络传输结构体解析错误）
+#pragma pack(1)
+
 // 用户信息结构体（注册/登录/在线用户共用）
 typedef struct {
     char account[32];    // 账号（唯一）
@@ -67,6 +70,9 @@ typedef struct {
     lv_obj_t *chat_title; // 20251008新增：单聊标题（避免重叠）
 
 } CHAT_CTRL, *CHAT_CTRL_P;
+
+// 恢复默认对齐方式
+#pragma pack()
 
 #endif
 

@@ -31,8 +31,10 @@ typedef enum {
     MSG_SET_AVATAR,       // 20250929新增：设置头像
     MSG_GROUP_CHAT,         // 20250929新增群聊消息    
     MSG_LOGOUT            // 20250928新增退出登录
-
 } MsgType;
+
+// 20251009新增：强制1字节对齐（与客户端保持一致）
+#pragma pack(1)
 
 // 用户信息结构体（注册/登录/在线用户共用）
 typedef struct {
@@ -43,7 +45,6 @@ typedef struct {
     int port;            // 端口号
     char signature[64];  // 个性签名
     char avatar[64];     // 头像路径（开发板本地路径）
-
     int online;          // 20250927新增：是否在线（1=在线，0=离线）
     char friends[20][32];// 好友账号列表
     int friend_cnt;      // 好友数量
@@ -66,7 +67,6 @@ typedef struct {
     char signature[64];  // 个性签名
     char avatar[64];     // 头像路径
     int online; // 是否在线（1=在线，0=离线）
-
     char friends[20][32];// 20250927新增：好友账号列表
     int friend_cnt;      // 好友数量
 } RegUser;
@@ -77,6 +77,9 @@ typedef struct {
     struct sockaddr_in addr;
     RegUser user; // 对应的注册用户
 } ClientInfo;
+
+// 20251009新增：恢复默认对齐方式
+#pragma pack()
 
 // 20251009新增修改函数声明
 static void Get_Online_User_Str(char *buf, int buf_len, ClientInfo *client);
