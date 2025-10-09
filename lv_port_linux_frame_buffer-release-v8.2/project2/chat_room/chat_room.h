@@ -38,6 +38,10 @@ typedef struct {
     int port;            // 端口号
     char signature[64];  // 个性签名
     char avatar[64];     // 头像路径（开发板本地路径）
+    int online;          // 20251009新增：客户端暂不使用，仅为对齐服务器结构体
+    char friends[20][32];// 客户端暂不使用，仅为对齐服务器结构体
+    int friend_cnt;      // 客户端暂不使用，仅为对齐服务器结构体
+
 } UserInfo;
 
 // 网络消息结构体（统一传输格式）

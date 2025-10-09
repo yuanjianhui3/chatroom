@@ -913,14 +913,16 @@ static void Handle_Server_Msg(NetMsg *msg)
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：账号已存在");
                 }
             } 
-            else if(strcmp(msg->content, "login") == 0)
+
+            // 20251009新增：兼容两种情况：1.content为"login"（正常） 2.content为空（结构体未完全同步前）
+            else if(strcmp(msg->content, "login") == 0 || strlen(msg->content) == 0)
             {
                 // 20250930新增：打印完整ACK数据，确认进入登录处理分支。是否收到正确的result和账号
-                printf("客户端收到登录ACK：type=%d, content=%s, result=%d, account=%s\n",
+                printf("客户端收到登录ACK：type=%d, content=%s（允许为空）, result=%d, account=%s\n",
                     msg->type, msg->content, msg->user.port, msg->user.account);
 
                 if(msg->user.port == 1) 
-                { // ACK=1成功
+                { // ACK=1成功。无论content是否为空，均判定登录成功（容错处理）
                     strncpy(g_chat_ctrl->cur_account, msg->user.account, 31);
                     printf("客户端：登录成功，账号：%s\n", g_chat_ctrl->cur_account);
 
@@ -956,18 +958,7 @@ static void Handle_Server_Msg(NetMsg *msg)
                         lv_label_set_text(friend_status_label, "登录成功！当前用户已显示");
                     }
                 
-                    // 4. 发送请求在线用户列表（不阻塞界面）
-                    NetMsg get_user_msg = {.type = MSG_GET_ONLINE_USER};
-                    if(Send_To_Server(&get_user_msg) > 0) {
-                        printf("客户端：已发送请求在线用户列表\n");
-                    } else {
-                        printf("客户端：发送列表请求失败（sockfd=%d）\n", g_chat_ctrl->sockfd);
-                        if(friend_status_label) {
-                            lv_label_set_text(friend_status_label, "登录成功，获取好友列表失败");
-                        }
-                    }
-                
-                    // 5. 手动添加当前用户（兜底，确保列表有内容）
+                    // 4. 手动添加当前用户（兜底，确保列表有内容）
                     if(g_chat_ctrl->friend_list && lv_obj_is_valid(g_chat_ctrl->friend_list)) 
                     {
                         lv_obj_clean(g_chat_ctrl->friend_list); // 清空旧列表
@@ -993,6 +984,18 @@ static void Handle_Server_Msg(NetMsg *msg)
                             printf("客户端：分配当前用户信息内存失败\n");
                         }
                     }
+
+                    // 5 发送请求在线用户列表（不阻塞界面）
+                    NetMsg get_user_msg = {.type = MSG_GET_ONLINE_USER};
+                    if(Send_To_Server(&get_user_msg) > 0) {
+                        printf("客户端：已发送请求在线用户列表\n");
+                    } else {
+                        printf("客户端：发送列表请求失败（sockfd=%d）\n", g_chat_ctrl->sockfd);
+                        if(friend_status_label) {
+                            lv_label_set_text(friend_status_label, "登录成功，获取好友列表失败");
+                        }
+                    }
+
                 } else 
                 { // ACK=0 登录失败
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录失败：账号/密码错误");

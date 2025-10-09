@@ -214,7 +214,13 @@ static void Send_ACK(int sockfd, const char *type, int result, RegUser *user) {
     NetMsg ack;
     memset(&ack, 0, sizeof(ack));
     ack.type = MSG_ACK;
-    strncpy(ack.content, type, 255);
+
+    // 20251009新增：显式清空content并复制（避免内存残留）
+    memset(ack.content, 0, sizeof(ack.content));
+    if(type != NULL) {
+        strncpy(ack.content, type, sizeof(ack.content)-1); // 留1字节存'\0'
+    }
+
     ack.user.port = result; // 1成功，0失败
 
     // 20250929新增：复制用户信息（账号/昵称/签名/头像）
@@ -226,6 +232,7 @@ static void Send_ACK(int sockfd, const char *type, int result, RegUser *user) {
     }
 
     send(sockfd, &ack, sizeof(ack), 0);
+    printf("服务器发送ACK：type=%d, content=%s, result=%d\n", ack.type, ack.content, result);//20251009新增
 }
 
 // -------------------------- 20250927新增：消息处理函数 -------------
