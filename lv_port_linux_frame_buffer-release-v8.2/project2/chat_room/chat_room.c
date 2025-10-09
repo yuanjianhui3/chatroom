@@ -59,6 +59,8 @@ static void Refresh_Friend_List(lv_event_t *e); // 20250929新增：刷新好友
 static void Set_Avatar_Click(lv_event_t *e); // 20250929新增：设置头像回调函数声明
 static void Enter_Group_Chat(lv_event_t *e); // 20250929新增：进入群聊
 
+static char g_saved_cur_account[32] = {0};// 20251009新增：保存登录账号（不随g_chat_ctrl释放，用于重新进入时恢复状态）
+
 // -------------------------- 工具函数 --------------------------
 
 // 20250927新增：动态获取开发板IP（适配eth0网卡，新手无需修改）- 14.30
@@ -131,7 +133,7 @@ static int Connect_Server() {
         close(sockfd);
         return -1;
     }
-    printf("connect server success\n");
+    printf("连接服务器成功\n\n");
     return sockfd;
 }
 
@@ -459,7 +461,13 @@ static void Friend_Click(lv_event_t *e)
 
     // 20250929新增：存储当前聊天好友账号----------------------20251008修改
     strncpy(g_chat_ctrl->chat_friend_account, info->account, sizeof(g_chat_ctrl->chat_friend_account)-1);
-    
+
+    // 20251009新增：进入单聊时删除群聊标题（避免重叠）
+    if (g_chat_ctrl->group_chat_title && lv_obj_is_valid(g_chat_ctrl->group_chat_title)) {
+        lv_obj_del(g_chat_ctrl->group_chat_title);
+        g_chat_ctrl->group_chat_title = NULL; // 置空避免野指针
+    }
+
     // 1. 更新聊天标题（先删除旧标题避免重叠）
     if(g_chat_ctrl->chat_title && lv_obj_is_valid(g_chat_ctrl->chat_title)) {
         lv_obj_del(g_chat_ctrl->chat_title);
@@ -487,7 +495,7 @@ static void Friend_Click(lv_event_t *e)
     // 4. 切换到聊天界面并强制刷新
     lv_scr_load(g_chat_ctrl->scr_chat);
     lv_refr_now(lv_disp_get_default());
-    printf("进入单聊：%s（账号：%s）\n", friend_name, info->account);
+    printf("进入单聊：%s（账号：%s）\n\n", friend_name, info->account);
 }
 
 // ----20250927新增--------------------
@@ -635,7 +643,7 @@ static void Create_Friend_Scr()
         printf("Create_Friend_Scr：创建scr_friend失败！\n");
         return;
     }
-    printf("Create_Friend_Scr：scr_friend创建成功（%p）\n", g_chat_ctrl->scr_friend);
+    // printf("Create_Friend_Scr：scr_friend创建成功（%p）\n", g_chat_ctrl->scr_friend);
     
     lv_obj_set_style_bg_color(g_chat_ctrl->scr_friend, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);
 
@@ -657,7 +665,7 @@ static void Create_Friend_Scr()
     lv_obj_set_size(g_chat_ctrl->friend_list, 300, 350);// 高度350，超出自动滚动
     lv_obj_align(g_chat_ctrl->friend_list, LV_ALIGN_TOP_MID, 0, 60);
     lv_obj_set_style_bg_color(g_chat_ctrl->friend_list, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);//20250927新增
-    printf("Create_Friend_Scr：好友列表控件创建成功（地址：%p）\n", g_chat_ctrl->friend_list);      //20251009新增
+    // printf("Create_Friend_Scr：好友列表控件创建成功（地址：%p）\n", g_chat_ctrl->friend_list);      //20251009新增
 
     // 返回首页按钮
     lv_obj_t *home_btn = lv_btn_create(g_chat_ctrl->scr_friend);
@@ -749,6 +757,12 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
         return;
     }
 
+    // 20251009新增：进入群聊时删除单聊标题（避免重叠）
+    if (g_chat_ctrl->chat_title && lv_obj_is_valid(g_chat_ctrl->chat_title)) {
+        lv_obj_del(g_chat_ctrl->chat_title);
+        g_chat_ctrl->chat_title = NULL; // 置空避免野指针
+    }
+
     // 20250930新增：先删除已有标题（避免重叠）20251008修改
     if(g_chat_ctrl->group_chat_title && lv_obj_is_valid(g_chat_ctrl->group_chat_title)) {
         lv_obj_del(g_chat_ctrl->group_chat_title);
@@ -768,47 +782,63 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
     lv_scr_load(g_chat_ctrl->scr_chat);
 }
 
-// 发送消息回调，（20250929新增修改：支持群聊）
+// 发送消息回调，（20250929新增修改：支持群聊）20251009新增大改
  static void Send_Msg_Click(lv_event_t *e) 
  {
-    NetMsg msg;
-    memset(&msg, 0, sizeof(msg));
-
-    lv_obj_t *msg_ta = lv_obj_get_child(g_chat_ctrl->scr_chat, 1);
-    const char *msg_text = lv_textarea_get_text(msg_ta);
-    
-    // 20250930新增：输入非空校验（避免空消息导致段错误）
-    if(strlen(msg_text) == 0) {
+    // 1. 全量指针校验（避免NULL访问）
+    if (!g_chat_ctrl || !g_chat_ctrl->chat_msg_ta || !lv_obj_is_valid(g_chat_ctrl->chat_msg_ta) ||
+        !g_chat_ctrl->chat_content_ta || !lv_obj_is_valid(g_chat_ctrl->chat_content_ta)) {
+        printf("Send_Msg_Click：无效控件，跳过发送\n");
+        return;
+    }
+    // 2. 获取输入消息（用全局变量chat_msg_ta，替代索引）
+    const char *msg_text = lv_textarea_get_text(g_chat_ctrl->chat_msg_ta);
+    if (strlen(msg_text) == 0) { // 空消息过滤
+        return;
+    }
+    // 3. 校验当前登录账号（避免空账号发送）
+    if (strlen(g_chat_ctrl->cur_account) == 0) {
+        printf("Send_Msg_Click：未登录，跳过发送\n");
         return;
     }
 
-    // 判断是否群聊（通过标题判断，简化逻辑）
+    NetMsg msg;
+    memset(&msg, 0, sizeof(msg));
+    strncpy(msg.user.account, g_chat_ctrl->cur_account, 31);
 
-    lv_obj_t *chat_title = g_chat_ctrl->group_chat_title; // 20250930新增修改：复用全局标题
+    // 4. 判断单聊/群聊（增加标题有效性校验）
+    bool is_group_chat = false;
+    if (g_chat_ctrl->group_chat_title && lv_obj_is_valid(g_chat_ctrl->group_chat_title)) {
+        if (strstr(lv_label_get_text(g_chat_ctrl->group_chat_title), "群聊") != NULL) {
+            is_group_chat = true;
+        }
+    }
 
-    if (chat_title && strstr(lv_label_get_text(chat_title), "群聊") != NULL) {  //20250930修改
+    if (is_group_chat) {
+        // 群聊：格式"default:消息"
         msg.type = MSG_GROUP_CHAT;
-        snprintf(msg.content, sizeof(msg.content), "default:%s", msg_text); // 默认群ID
+        snprintf(msg.content, sizeof(msg.content)-1, "default:%s", msg_text);
     } else {
-        // 20250930新增：校验好友账号非空
-        if(strlen(g_chat_ctrl->chat_friend_account) == 0) {
+        // 单聊：校验好友账号非空
+        if (strlen(g_chat_ctrl->chat_friend_account) == 0) {
+            printf("Send_Msg_Click：未选择好友，跳过发送\n");
             return;
         }
-
         msg.type = MSG_SEND_MSG;
-        snprintf(msg.content, sizeof(msg.content), "%s:%s", 
+        snprintf(msg.content, sizeof(msg.content)-1, "%s:%s", 
                  g_chat_ctrl->chat_friend_account, msg_text);
     }
-    strncpy(msg.user.account, g_chat_ctrl->cur_account, 31);
-    
-    if(Send_To_Server(&msg) > 0) {
-        lv_textarea_set_text(msg_ta, "");
-        // 自己显示
-        lv_obj_t *chat_content = lv_obj_get_child(g_chat_ctrl->scr_chat, 0);
-        char new_msg[300];
-        const char *sender = (strstr(lv_label_get_text(chat_title), "群聊") != NULL) ? "我(群聊)" : "我";
-        snprintf(new_msg, 300, "%s: %s\n%s", sender, msg_text, lv_label_get_text(chat_content));
-        lv_label_set_text(chat_content, new_msg);
+
+    // 5. 发送消息并更新本地聊天记录
+    if (Send_To_Server(&msg) > 0) {
+        lv_textarea_set_text(g_chat_ctrl->chat_msg_ta, ""); // 清空输入框
+        const char *sender = is_group_chat ? "我(群聊)" : "我";
+        char new_msg[300] = {0};
+        const char *current_content = lv_textarea_get_text(g_chat_ctrl->chat_content_ta);
+        // 拼接新消息（确保不越界）
+        snprintf(new_msg, sizeof(new_msg)-1, "%s: %s\n%s", sender, msg_text, current_content);
+        lv_textarea_set_text(g_chat_ctrl->chat_content_ta, new_msg);
+        lv_textarea_set_cursor_pos(g_chat_ctrl->chat_content_ta, strlen(new_msg)); // 滚动到底部
     }
  }
 
@@ -842,11 +872,11 @@ static void Create_Chat_Scr()
     lv_img_set_src(avatar_img, "S:/8080icon_img.jpg");
     lv_obj_center(avatar_img);
 
-    // 消息输入框（索引1）
-    lv_obj_t *msg_ta = Create_Textarea(g_chat_ctrl->scr_chat, "请输入消息");
-    lv_obj_align(msg_ta, LV_ALIGN_BOTTOM_MID, 0, -60);
+    // 消息输入框（全局变量存储，替代索引）20251009修改：给g_chat_ctrl->chat_msg_ta赋值为 Send_Msg_Click 提供可靠访问
+    g_chat_ctrl->chat_msg_ta = Create_Textarea(g_chat_ctrl->scr_chat, "请输入消息");
+    lv_obj_align(g_chat_ctrl->chat_msg_ta, LV_ALIGN_BOTTOM_MID, 0, -60);
     // 20250929新增：绑定键盘
-    Dir_Look_Bind_Textarea_Keyboard(msg_ta, g_chat_ctrl->scr_chat);
+    Dir_Look_Bind_Textarea_Keyboard(g_chat_ctrl->chat_msg_ta, g_chat_ctrl->scr_chat);
 
     // 发送按钮
     lv_obj_t *send_btn = lv_btn_create(g_chat_ctrl->scr_chat);
@@ -918,13 +948,13 @@ static void Handle_Server_Msg(NetMsg *msg)
             else if(strcmp(msg->content, "login") == 0 || strlen(msg->content) == 0)
             {
                 // 20250930新增：打印完整ACK数据，确认进入登录处理分支。是否收到正确的result和账号
-                printf("客户端收到登录ACK：type=%d, content=%s（允许为空）, result=%d, account=%s\n",
+                printf("客户端收到登录ACK：type=%d, content=%s（允许为空）, result=%d, account=%s\n\n",
                     msg->type, msg->content, msg->user.port, msg->user.account);
 
                 if(msg->user.port == 1) 
                 { // ACK=1成功。无论content是否为空，均判定登录成功（容错处理）
                     strncpy(g_chat_ctrl->cur_account, msg->user.account, 31);
-                    printf("客户端：登录成功，账号：%s\n", g_chat_ctrl->cur_account);
+                    printf("客户端：登录成功，账号：%s\n\n", g_chat_ctrl->cur_account);
 
                     // 20251009新增大改：1. 强制重建好友界面（彻底解决初始化残留问题）
                     if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
@@ -975,7 +1005,7 @@ static void Handle_Server_Msg(NetMsg *msg)
                             if (self_item) {
                                 lv_obj_set_user_data(self_item, self_info);
                                 lv_obj_add_event_cb(self_item, Friend_Click, LV_EVENT_CLICKED, NULL);
-                                printf("客户端：已添加当前用户到好友列表\n");
+                                printf("客户端：已添加当前用户到好友列表\n\n");
                             } else {
                                 free(self_info);
                                 printf("客户端：创建当前用户列表项失败\n");
@@ -988,7 +1018,7 @@ static void Handle_Server_Msg(NetMsg *msg)
                     // 5 发送请求在线用户列表（不阻塞界面）
                     NetMsg get_user_msg = {.type = MSG_GET_ONLINE_USER};
                     if(Send_To_Server(&get_user_msg) > 0) {
-                        printf("客户端：已发送请求在线用户列表\n");
+                        printf("客户端：已发送请求在线用户列表\n\n");
                     } else {
                         printf("客户端：发送列表请求失败（sockfd=%d）\n", g_chat_ctrl->sockfd);
                         if(friend_status_label) {
@@ -1057,7 +1087,7 @@ static void Handle_Server_Msg(NetMsg *msg)
         {   
             // 20251008新增：无在线用户时，手动添加当前登录用户
             if(strlen(msg->content) == 0) {
-                printf("客户端：无在线用户，添加当前用户到列表\n");
+                printf("客户端：无在线用户，添加当前用户到列表\n\n");
                 char self_info[256];
                 // 20251009修改：格式：账号:昵称:签名:头像:状态（匹配服务器返回格式）
                 snprintf(self_info, 256, "%s:%s:%s:%s:在线", 
@@ -1098,7 +1128,9 @@ static void Handle_Server_Msg(NetMsg *msg)
 
                 // 添加列表项（显示昵称+签名+状态）20250927新增显示在线状态（MSG_USER_LIST仅返回在线用户）
                 char item_text[120];    //20250930修改100-120
-                snprintf(item_text, 120, "%s(%s)[%s]", nickname, signature, status);    //20250930新增status
+
+                // 20251009修改：确保文本不溢出，显示“昵称(签名)[状态]”处理签名为空的情况，避免显示异常，统一格式。
+                snprintf(item_text, sizeof(item_text)-1, "%s(%s)[%s]", nickname, strlen(signature) ? signature : "无签名", status);
 
                 // 添加列表项并存储好友信息（账号+头像）
                 lv_obj_t *item = lv_list_add_btn(g_chat_ctrl->friend_list, NULL, item_text);
@@ -1116,7 +1148,7 @@ static void Handle_Server_Msg(NetMsg *msg)
                 lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "好友列表已更新");
 
                 //20250930新增：确认 MSG_USER_LIST 的接收，收到服务器返回的用户列表
-                printf("客户端收到在线用户列表：%s\n", msg->content);
+                printf("客户端收到在线用户列表：%s\n\n", msg->content);
             break;
         }
         case MSG_SEND_MSG: {
@@ -1132,21 +1164,37 @@ static void Handle_Server_Msg(NetMsg *msg)
             lv_textarea_set_cursor_pos(chat_content, strlen(lv_textarea_get_text(chat_content)));
             break;
         }
-        case MSG_GROUP_CHAT: {
-            // 20250929新增：群聊消息格式：发送者昵称+内容
-            lv_obj_t *chat_title = lv_obj_get_child(g_chat_ctrl->scr_chat, 2);
-            if (strstr(lv_label_get_text(chat_title), "群聊") == NULL) {
-                // 若当前不在群聊窗口，弹窗提示（简化为标签显示）
-                lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), 
-                                 "收到群聊消息，请进入群聊查看");
+        case MSG_GROUP_CHAT: 
+        {
+            // 20251009新增大改：1. 拦截群聊标题空指针（避免非法访问）
+            if (!g_chat_ctrl->group_chat_title || !lv_obj_is_valid(g_chat_ctrl->group_chat_title)) {
+                if (g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), 
+                                     "收到群聊消息，请进入群聊查看");
+                }
                 break;
             }
-            // 在群聊窗口显示消息
-            lv_obj_t *chat_content = lv_obj_get_child(g_chat_ctrl->scr_chat, 0);
-            char new_msg[300];
-            snprintf(new_msg, 300, "%s(群聊): %s\n%s", 
-                     msg->user.nickname, msg->content, lv_label_get_text(chat_content));
-            lv_label_set_text(chat_content, new_msg);
+            // 2. 确认当前在群聊窗口
+            if (strstr(lv_label_get_text(g_chat_ctrl->group_chat_title), "群聊") == NULL) {
+                if (g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), 
+                                     "收到群聊消息，请进入群聊查看");
+                }
+                break;
+            }
+            // 3. 使用全局文本框（lv_textarea），匹配控件类型（核心修复）
+            lv_obj_t *chat_content = g_chat_ctrl->chat_content_ta;
+            if (!chat_content || !lv_obj_is_valid(chat_content)) {
+                printf("MSG_GROUP_CHAT：聊天文本框无效\n");
+                break;
+            }
+            // 4. 拼接消息并更新（使用textarea接口）
+            char new_msg[300] = {0};
+            const char *current_content = lv_textarea_get_text(chat_content);
+            snprintf(new_msg, sizeof(new_msg)-1, "%s(群聊): %s\n%s", 
+                     msg->user.nickname, msg->content, current_content);
+            lv_textarea_set_text(chat_content, new_msg);
+            lv_textarea_set_cursor_pos(chat_content, strlen(new_msg)); // 自动滚动到底部
             break;
         }
 
@@ -1183,7 +1231,7 @@ static void *Recv_Server_Msg(void *arg)
         if(ret > 0) 
         {
             // 20251009新增：打印接收的消息详情（确认解析是否正确）
-            printf("客户端收到消息：type=%d（MSG_ACK=3）, content=%s, user.port=%d\n",  msg->type, msg->content, msg->user.port);
+            printf("客户端收到消息：type=%d（MSG_ACK=3）, content=%s, user.port=%d\n\n",  msg->type, msg->content, msg->user.port);
             
             // 接收成功，加锁处理UI（LVGL需主线程操作）
             pthread_mutex_lock(&msg_mutex);
@@ -1195,7 +1243,7 @@ static void *Recv_Server_Msg(void *arg)
             pthread_mutex_unlock(&msg_mutex);
         } else if(ret == 0) {
             // ret=0：服务器主动关闭连接
-            printf("Recv_Server_Msg：服务器断开连接（ret=0）\n");
+            printf("Recv_Server_Msg：服务器断开连接（ret=0）\n\n");
             free(msg);
             break;
         } else { // ret == -1
@@ -1219,7 +1267,7 @@ static void *Recv_Server_Msg(void *arg)
             }
         }
     }
-    printf("接收线程安全退出\n");
+    printf("接收线程安全退出\n\n");
 
     return NULL;
 }
@@ -1245,10 +1293,10 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
     Create_Setting_Scr(); // 新增设置界面
 
     // 20251009新增：打印初始化状态日志
-    printf("Chat_Room_Init：界面初始化完成\n");
-    printf("  - scr_friend（好友界面）：%p\n", g_chat_ctrl->scr_friend);
-    printf("  - friend_list（好友列表控件）：%p\n", g_chat_ctrl->friend_list);
-    printf("  - scr_chat（聊天界面）：%p\n", g_chat_ctrl->scr_chat);
+    printf("\nChat_Room_Init：界面初始化完成\n");
+    // printf("  - scr_friend（好友界面）：%p\n", g_chat_ctrl->scr_friend);
+    // printf("  - friend_list（好友列表控件）：%p\n", g_chat_ctrl->friend_list);
+    // printf("  - scr_chat（聊天界面）：%p\n", g_chat_ctrl->scr_chat);
 
     // 20251008新增：强制设置好友列表界面为有效
     if(g_chat_ctrl->scr_friend) {
@@ -1256,7 +1304,7 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
     }
 
     // 20250930新增日志：确认scr_friend创建后的值
-    printf("Chat_Room_Init：scr_friend=%p\n", g_chat_ctrl->scr_friend);
+    printf("Chat_Room_Init：scr_friend=%p\n\n", g_chat_ctrl->scr_friend);
 
     // 根据参数决定是否立即连接服务器
     if(connect_now) 
@@ -1276,7 +1324,84 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
         is_thread_created = true; // 20250928新增
     } 
 
-    // 进入登录界面
+    // 20251009新增：1. 判断是否有保存的登录账号，有则直接进入好友列表
+    //确保重新进入时主动连接服务器、请求好友列表，无连接时显示本地账号，避免重新登录。
+    if (strlen(g_saved_cur_account) > 0) {
+        // 恢复登录账号
+        strncpy(g_chat_ctrl->cur_account, g_saved_cur_account, sizeof(g_chat_ctrl->cur_account)-1);
+        printf("恢复登录：账号=%s\n\n", g_chat_ctrl->cur_account);
+
+        // 20251009新增：2.重新连接服务器（退出时已关闭sockfd）
+        if (g_chat_ctrl->sockfd < 0) {
+            g_chat_ctrl->sockfd = Connect_Server();
+            if (g_chat_ctrl->sockfd < 0) {
+                printf("恢复登录：重新连接服务器失败\n\n");
+                lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "恢复登录：连接服务器失败");
+                // 连接失败仍进入好友列表（显示本地账号）
+                goto load_friend_scr;
+            } else {
+                // 重启接收线程（确保能接收用户列表）
+                if (!is_thread_created) {
+                    pthread_create(&recv_thread_id, NULL, Recv_Server_Msg, NULL);
+                    is_thread_created = true;
+                    printf("恢复登录：重启接收线程\n\n");
+                }
+            }
+        }
+
+        load_friend_scr:
+        // 3. 重建好友列表（避免旧界面残留）
+        if (g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+            lv_obj_del(g_chat_ctrl->scr_friend);
+        }
+        Create_Friend_Scr();
+
+        // 20251009新增：4. 加载好友列表并请求在线用户
+        if (g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+            lv_scr_load(g_chat_ctrl->scr_friend);
+
+            //主动请求好友列表（关键：确保从服务器同步数据）
+        if (g_chat_ctrl->sockfd >= 0) {
+            NetMsg get_user_msg = {.type = MSG_GET_ONLINE_USER};
+            if (Send_To_Server(&get_user_msg) > 0) {
+                printf("恢复登录：已请求在线用户列表\n\n");
+                lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "恢复登录：同步好友列表中...");
+            } else {
+                lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "获取好友列表失败");
+            }
+        } else {
+            lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "未连接服务器（仅显示本地账号）");
+
+            // 20251009新增：手动添加当前用户到列表
+            if (g_chat_ctrl->friend_list && lv_obj_is_valid(g_chat_ctrl->friend_list)) 
+            {
+                lv_obj_clean(g_chat_ctrl->friend_list);
+                typedef struct { char account[32]; char avatar[64]; } FriendInfo;
+                FriendInfo *self_info = malloc(sizeof(FriendInfo));
+                if (self_info) 
+                {
+                    memset(self_info, 0, sizeof(FriendInfo));
+                    strncpy(self_info->account, g_chat_ctrl->cur_account, 31);
+                    strncpy(self_info->avatar, "S:/8080icon_img.jpg", 63);
+                    char item_text[120];
+                    snprintf(item_text, sizeof(item_text)-1, "%s(当前用户)[离线]", g_chat_ctrl->cur_account);
+                    lv_obj_t *self_item = lv_list_add_btn(g_chat_ctrl->friend_list, NULL, item_text);
+                    if (self_item) 
+                    {
+                        lv_obj_set_user_data(self_item, self_info);
+                        lv_obj_add_event_cb(self_item, Friend_Click, LV_EVENT_CLICKED, NULL);
+                    } else {
+                        free(self_info);
+                    }
+                }
+            }
+        }
+            printf("恢复登录状态，进入好友列表\n");
+            return;
+        }
+    }
+
+    // 无保存账号，默认加载登录界面
     lv_scr_load(g_chat_ctrl->scr_login);
     // 其他界面：scr_login、scr_register、scr_friend、scr_chat、scr_setting
 }
@@ -1285,7 +1410,7 @@ void Chat_Room_Exit()
 {
     if(!g_chat_ctrl) return;
 
-    printf("开始退出聊天室...\n");  //20250928新增
+    printf("开始退出聊天室...\n\n");  //20250928新增
 
     // 1. 设置退出标志
     g_chat_ctrl->exiting = true;
@@ -1314,7 +1439,7 @@ void Chat_Room_Exit()
     { // 20250928新增判断,解决段错误
         pthread_join(recv_thread_id, NULL);// 等待线程完全退出
         is_thread_created = false; // 重置标志
-        printf("接收线程已退出\n");
+        printf("接收线程已退出\n\n");
     }
     // 销毁互斥锁
     pthread_mutex_destroy(&msg_mutex);
@@ -1331,9 +1456,20 @@ void Chat_Room_Exit()
     if(g_chat_ctrl->scr_setting && lv_obj_is_valid(g_chat_ctrl->scr_setting))
         lv_obj_del(g_chat_ctrl->scr_setting);
 
+    // 20251009新增：保存当前登录账号到静态变量（退出前保存）
+    if (g_chat_ctrl) {
+        if (strlen(g_chat_ctrl->cur_account) > 0) {
+            strncpy(g_saved_cur_account, g_chat_ctrl->cur_account, sizeof(g_saved_cur_account)-1);
+            printf("Chat_Room_Exit：保存登录账号=%s\n\n", g_saved_cur_account);
+        } else {
+            memset(g_saved_cur_account, 0, sizeof(g_saved_cur_account));
+            printf("Chat_Room_Exit：无登录账号，清空保存\n\n");
+        }
+    }
+
     // 释放内存，全局控制结构体
     free(g_chat_ctrl);
     g_chat_ctrl = NULL;
 
-    printf("聊天室资源完全释放\n");
+    printf("聊天室资源完全释放\n\n");
 }
