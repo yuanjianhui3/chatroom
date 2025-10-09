@@ -801,6 +801,12 @@ static void Logout_Btn_Task(lv_event_t *e)
 
     // 2. 清空当前账号，返回登录界面
     memset(g_chat_ctrl->cur_account, 0, sizeof(g_chat_ctrl->cur_account));
+
+    memset(g_saved_cur_account, 0, sizeof(g_saved_cur_account)); // 20251009新增：清空保存的账号
+    Chat_Room_Exit(); //20251009新增：释放g_chat_ctrl，允许重新初始化，销毁旧界面
+
+    Create_Login_Scr();     //20251009新增：重新创建登录界面（确保登录界面可用）
+
     lv_scr_load(g_chat_ctrl->scr_login);
 }
 
@@ -845,6 +851,9 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
     lv_textarea_set_text(chat_content, "已进入群聊，消息将发送给所有人\n");
     lv_obj_set_style_text_font(chat_content, &lv_myfont_kai_20, LV_STATE_DEFAULT);
 
+    // 20251009新增：加载群聊历史记录（与单聊加载逻辑一致）
+    Load_Chat_Log("group_default");
+
     lv_scr_load(g_chat_ctrl->scr_chat);
 }
 
@@ -887,9 +896,9 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
     }
 
     if (is_group_chat) {
-        // 群聊：格式"default:消息"
+        // 群聊：格式"default:消息"（20251009修改：用trim_msg）
         msg.type = MSG_GROUP_CHAT;
-        snprintf(msg.content, sizeof(msg.content)-1, "default:%s", msg_text);
+        snprintf(msg.content, sizeof(msg.content)-1, "default:%s", trim_msg);
     } else {
         // 单聊：校验好友账号非空
         if (strlen(g_chat_ctrl->chat_friend_account) == 0) {
@@ -898,7 +907,7 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
         }
         msg.type = MSG_SEND_MSG;
         snprintf(msg.content, sizeof(msg.content)-1, "%s:%s", 
-                 g_chat_ctrl->chat_friend_account, msg_text);
+                 g_chat_ctrl->chat_friend_account, trim_msg);
     }
 
     // 5. 发送消息并更新本地聊天记录
@@ -909,7 +918,7 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
         char new_msg[300] = {0};
         const char *current_content = lv_textarea_get_text(g_chat_ctrl->chat_content_ta);
         // 拼接新消息（确保不越界）
-        snprintf(new_msg, sizeof(new_msg)-1, "%s: %s\n%s", sender, msg_text, current_content);
+        snprintf(new_msg, sizeof(new_msg)-1, "%s: %s\n%s", sender, trim_msg, current_content);
         lv_textarea_set_text(g_chat_ctrl->chat_content_ta, new_msg);
         lv_textarea_set_cursor_pos(g_chat_ctrl->chat_content_ta, strlen(new_msg)); // 滚动到底部
 
@@ -1362,11 +1371,10 @@ static void *Recv_Server_Msg(void *arg)
 // -------------------------- 模块初始化与退出 --------------------------
 void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
 {
-
-    // 20251009新增：若已存在控制结构体，直接切换到好友列表（不重新初始化）
-    if (g_chat_ctrl && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+    // 20251009新增修改：若已登录且界面有效，直接进入好友列表；否则重新初始化
+    if (g_chat_ctrl && strlen(g_chat_ctrl->cur_account) > 0 && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
         lv_scr_load(g_chat_ctrl->scr_friend);
-        printf("聊天室已初始化，直接进入好友列表\n");
+        printf("已登录，直接进入好友列表（账号：%s）\n", g_chat_ctrl->cur_account);
         return;
     }
 

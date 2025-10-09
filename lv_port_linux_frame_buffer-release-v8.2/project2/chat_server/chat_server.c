@@ -405,23 +405,30 @@ static void Handle_Add_Friend(NetMsg *msg, ClientInfo *client)
         return;
     }
 
-    // 20250928修改：先复制，friend_cnt 稍后再增加
+    // 20250928修改：先复制，friend_cnt 稍后再增加。给添加方添加好友
     snprintf(client->user.friends[client->user.friend_cnt], sizeof(client->user.friends[0]), "%s", target->account);
     client->user.friend_cnt++; // 复制成功后，再增加计数
 
-    // 20251009新增修改：更新注册用户的好友列表并保存（关键：确保持久化）
-    RegUser *reg_user = Find_Reg_User(client->user.account);
+    // 20251009新增：给被添加方同步添加好友（新增核心逻辑）
+    snprintf(target->friends[target->friend_cnt], sizeof(target->friends[0]), "%s", client->user.account);
+    target->friend_cnt++;
 
-    if (reg_user) {
-        *reg_user = client->user;
-        Save_Reg_Users();
+    // 20251009新增修改：更新注册用户的好友列表并保存（关键：确保持久化）
+    RegUser *reg_user = Find_Reg_User(client->user.account);// 添加方
+    RegUser *target_reg = Find_Reg_User(target->account);   // 20251009新增：被添加方
+
+    if (reg_user && target_reg) 
+    {
+        *reg_user = client->user;       // 更新添加方
+        *target_reg = *target;      // 更新被添加方
+        Save_Reg_Users();               // 持久化到user_data.txt
         Send_ACK(client->sockfd, "add_friend", 1, reg_user); // 返回更新后的用户信息
-        printf("添加好友成功：%s→%s，当前好友数：%d\n", client->user.account, target->account, client->user.friend_cnt);
-    } else {
+        printf("添加好友成功：%s→%s，双方列表已同步，当前好友数：%d\n", client->user.account, target->account, client->user.friend_cnt);
+    }
+    else {
         Send_ACK(client->sockfd, "add_friend", 0, NULL);
         printf("添加好友失败：未找到用户%s\n", client->user.account);
     }
-
 }
 
 static void Handle_Set_Signature(NetMsg *msg, ClientInfo *client) {
