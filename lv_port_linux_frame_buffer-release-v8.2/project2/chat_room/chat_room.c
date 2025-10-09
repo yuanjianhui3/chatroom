@@ -86,6 +86,65 @@ static char *Get_Local_IP(void) {
 }
 // -------------------------------------------
 
+// 20251009新增：获取聊天记录文件路径（格式：/tmp/chat_当前账号_好友账号.txt）---------
+static char *Get_Chat_Log_Path(const char *friend_acc) {
+    static char path[64];
+    snprintf(path, 64, "/tmp/chat_%s_%s.txt", g_chat_ctrl->cur_account, friend_acc);
+    return path;
+}
+
+// 新增：保存聊天记录到本地文件
+static void Save_Chat_Log(const char *friend_acc, const char *sender, const char *msg) {
+    if (!friend_acc || !sender || !msg) return;
+    const char *path = Get_Chat_Log_Path(friend_acc);
+    FILE *fp = fopen(path, "a+"); // 追加模式
+    if (!fp) {
+        perror("Save_Chat_Log fopen failed");
+        return;
+    }
+    // 记录格式：[时间] 发送者: 消息\n
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    char time_str[32];
+    strftime(time_str, 32, "[%Y-%m-%d %H:%M:%S]", t);
+    fprintf(fp, "%s %s: %s\n", time_str, sender, msg);
+    fclose(fp);
+}
+
+// 新增：加载聊天记录到聊天界面
+static void Load_Chat_Log(const char *friend_acc) {
+    if (!friend_acc || !g_chat_ctrl->chat_content_ta) return;
+    const char *path = Get_Chat_Log_Path(friend_acc);
+    FILE *fp = fopen(path, "r");
+    if (!fp) {
+        // 文件不存在时返回空（首次聊天）
+        return;
+    }
+    // 读取文件内容到缓冲区。20251009修改：静态变量（存储在数据段，不占用栈空间）
+    static char buf[4096] = {0};    // 静态4KB缓冲区（仅初始化1次）
+    static char line[256];          // 静态256字节行缓存
+    memset(buf, 0, sizeof(buf));   // 20251009新增：每次调用清空缓冲区（避免历史数据残留）
+
+    while (fgets(line, sizeof(line), fp)) {
+        // 20251009修改：确保不超出缓冲区大小（增加安全校验）
+        if (strlen(buf) + strlen(line) < sizeof(buf) - 1) 
+        {
+
+            strncat(buf, line, sizeof(buf) - strlen(buf) - 1);
+
+        } else {
+            printf("Load_Chat_Log: 聊天记录超出缓冲区上限，部分内容未加载\n");
+            break;
+        }
+    }
+    fclose(fp);
+    // 加载到聊天文本框
+    lv_textarea_set_text(g_chat_ctrl->chat_content_ta, buf);
+    // 滚动到底部
+    lv_textarea_set_cursor_pos(g_chat_ctrl->chat_content_ta, strlen(buf));
+}
+//-----------------------------------------
+
 // 创建输入框（复用UI代码，减少冗余）
 static lv_obj_t *Create_Textarea(lv_obj_t *parent, const char *hint_text) {
     lv_obj_t *ta = lv_textarea_create(parent);
@@ -144,10 +203,14 @@ static int Send_To_Server(NetMsg *msg) {
 }
 
 // -------------------------- 界面切换与创建 --------------------------
-// 返回首页
+// 20251009新增修改：返回首页。仅切换 LVGL 界面，不释放g_chat_ctrl、sockfd和线程，确保登录状态保留。
 static void Back_To_Home(lv_event_t *e) {
     lv_obj_t *scr_home = (lv_obj_t *)lv_event_get_user_data(e);
+
+    if (!scr_home || !lv_obj_is_valid(scr_home)) return;
+    // 仅切换界面，不释放聊天室资源（保留g_chat_ctrl和登录状态）
     lv_scr_load(scr_home);
+    printf("返回首页：保留聊天室资源，账号=%s\n", g_chat_ctrl->cur_account);
 }
 
 // 返回好友列表
@@ -492,6 +555,9 @@ static void Friend_Click(lv_event_t *e)
     // 3. 清空历史聊天记录
     lv_textarea_set_text(g_chat_ctrl->chat_content_ta, "");
 
+    // 20251009新增：加载历史聊天记录
+    Load_Chat_Log(info->account);
+
     // 4. 切换到聊天界面并强制刷新
     lv_scr_load(g_chat_ctrl->scr_chat);
     lv_refr_now(lv_disp_get_default());
@@ -791,11 +857,17 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
         printf("Send_Msg_Click：无效控件，跳过发送\n");
         return;
     }
-    // 2. 获取输入消息（用全局变量chat_msg_ta，替代索引）
+
+    // 2. 获取输入消息（用全局变量chat_msg_ta，替代索引）（增加有效性校验，避免LVGL控件延迟导致的空文本）
     const char *msg_text = lv_textarea_get_text(g_chat_ctrl->chat_msg_ta);
-    if (strlen(msg_text) == 0) { // 空消息过滤
+    // 20251009新增：二次校验：过滤纯空格消息，确保文本有效
+    char trim_msg[256] = {0};
+    sscanf(msg_text, "%[^\n]", trim_msg); // 去除换行符
+    if (strlen(trim_msg) == 0) { 
+        printf("Send_Msg_Click：空消息或纯空格，跳过发送\n");
         return;
     }
+
     // 3. 校验当前登录账号（避免空账号发送）
     if (strlen(g_chat_ctrl->cur_account) == 0) {
         printf("Send_Msg_Click：未登录，跳过发送\n");
@@ -830,7 +902,8 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
     }
 
     // 5. 发送消息并更新本地聊天记录
-    if (Send_To_Server(&msg) > 0) {
+    if (Send_To_Server(&msg) > 0) 
+    {
         lv_textarea_set_text(g_chat_ctrl->chat_msg_ta, ""); // 清空输入框
         const char *sender = is_group_chat ? "我(群聊)" : "我";
         char new_msg[300] = {0};
@@ -839,6 +912,13 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
         snprintf(new_msg, sizeof(new_msg)-1, "%s: %s\n%s", sender, msg_text, current_content);
         lv_textarea_set_text(g_chat_ctrl->chat_content_ta, new_msg);
         lv_textarea_set_cursor_pos(g_chat_ctrl->chat_content_ta, strlen(new_msg)); // 滚动到底部
+
+        // 20251009新增：保存聊天记录到本地文件
+        if (is_group_chat) {
+            Save_Chat_Log("group_default", sender, trim_msg);
+        } else {
+            Save_Chat_Log(g_chat_ctrl->chat_friend_account, sender, trim_msg);
+        }
     }
  }
 
@@ -1162,6 +1242,10 @@ static void Handle_Server_Msg(NetMsg *msg)
 
             // 20250930新增：自动滚动到底部
             lv_textarea_set_cursor_pos(chat_content, strlen(lv_textarea_get_text(chat_content)));
+
+            // 20251009新增：保存接收的消息到本地文件
+            Save_Chat_Log(g_chat_ctrl->chat_friend_account, msg->user.nickname, msg->content);
+
             break;
         }
         case MSG_GROUP_CHAT: 
@@ -1195,6 +1279,9 @@ static void Handle_Server_Msg(NetMsg *msg)
                      msg->user.nickname, msg->content, current_content);
             lv_textarea_set_text(chat_content, new_msg);
             lv_textarea_set_cursor_pos(chat_content, strlen(new_msg)); // 自动滚动到底部
+
+            // 20251009新增：保存群聊消息到本地文件
+            Save_Chat_Log("group_default", msg->user.nickname, msg->content);
             break;
         }
 
@@ -1275,6 +1362,14 @@ static void *Recv_Server_Msg(void *arg)
 // -------------------------- 模块初始化与退出 --------------------------
 void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
 {
+
+    // 20251009新增：若已存在控制结构体，直接切换到好友列表（不重新初始化）
+    if (g_chat_ctrl && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+        lv_scr_load(g_chat_ctrl->scr_friend);
+        printf("聊天室已初始化，直接进入好友列表\n");
+        return;
+    }
+
     // 初始化全局控制结构体
     g_chat_ctrl = (CHAT_CTRL_P)malloc(sizeof(CHAT_CTRL));
     memset(g_chat_ctrl, 0, sizeof(CHAT_CTRL));
@@ -1334,7 +1429,9 @@ void Chat_Room_Init(struct Ui_Ctrl *uc, lv_obj_t *scr_home, bool connect_now)
         // 20251009新增：2.重新连接服务器（退出时已关闭sockfd）
         if (g_chat_ctrl->sockfd < 0) {
             g_chat_ctrl->sockfd = Connect_Server();
-            if (g_chat_ctrl->sockfd < 0) {
+
+            if (g_chat_ctrl->sockfd < 0) 
+            {
                 printf("恢复登录：重新连接服务器失败\n\n");
                 lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "恢复登录：连接服务器失败");
                 // 连接失败仍进入好友列表（显示本地账号）

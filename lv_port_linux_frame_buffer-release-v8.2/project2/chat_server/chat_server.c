@@ -93,54 +93,93 @@ pthread_mutex_t data_mutex;      // 数据保护互斥锁
 
 // 20250929新增：用户数据持久化---------加载用户数据（启动时调用）
 static void Load_Reg_Users() {
-    FILE *fp = fopen(USER_FILE, "rb");
-    if (fp == NULL) {
+    FILE *fp = fopen(USER_FILE, "r");// 文本模式
+
+    //20251009新增大改：文本化加载用户数据
+    //功能说明：user_data.txt改为文本格式，每行对应一个用户，字段用逗号分隔，示例如下：
+    // test1,123456,测试1,默认签名,S:/avatar/1.png,1,1,test2
+    // test2,654321,测试2,无签名,S:/avatar/2.png,0,1,test1
+
+    if (!fp) {
         printf("用户数据文件[%s]不存在，初始化空列表\n", USER_FILE);
         return;
     }
-    // 20251008新增修改：读取注册用户数
-    size_t read_cnt = fread(&reg_user_count, sizeof(int), 1, fp);
-    if (read_cnt != 1) {
+    // 读取用户总数
+    if (fscanf(fp, "%d\n", &reg_user_count) != 1) {
         printf("读取用户数失败，初始化空列表\n");
         fclose(fp);
+        reg_user_count = 0;
         return;
     }
-
-    if (reg_user_count > MAX_USER) reg_user_count = MAX_USER; // 防止溢出
+    if (reg_user_count > MAX_USER) reg_user_count = MAX_USER;
+    memset(reg_users, 0, sizeof(reg_users)); // 清空原有数据
     
-    // 20251008新增修改：读取用户数据
-    read_cnt = fread(reg_users, sizeof(RegUser), reg_user_count, fp);
-    if (read_cnt != reg_user_count) {
-        printf("读取数据不完整（预期%d，实际%zu）\n", reg_user_count, read_cnt);
-        reg_user_count = read_cnt;
+    // 读取每个用户的信息
+    for (int i=0; i<reg_user_count; i++) {
+        RegUser *u = &reg_users[i];
+        char line[1024] = {0};
+        fgets(line, 1024, fp); // 读取整行
+        // 解析字段（账号,密码,昵称,签名,头像,在线,好友数,好友1,...）
+        char *token = strtok(line, ",");
+        if (!token) break;
+        strncpy(u->account, token, sizeof(u->account)-1);
+        
+        token = strtok(NULL, ",");
+        if (token) strncpy(u->password, token, sizeof(u->password)-1);
+        
+        token = strtok(NULL, ",");
+        if (token) strncpy(u->nickname, token, sizeof(u->nickname)-1);
+        
+        token = strtok(NULL, ",");
+        if (token) strncpy(u->signature, token, sizeof(u->signature)-1);
+        
+        token = strtok(NULL, ",");
+        if (token) strncpy(u->avatar, token, sizeof(u->avatar)-1);
+        
+        token = strtok(NULL, ",");
+        if (token) u->online = atoi(token);
+        
+        token = strtok(NULL, ",");
+        if (token) u->friend_cnt = atoi(token);
+        
+        // 解析好友列表
+        for (int j=0; j<u->friend_cnt && j<20; j++) {
+            token = strtok(NULL, ",");
+            if (token) strncpy(u->friends[j], token, sizeof(u->friends[j])-1);
+        }
     }
 
     fclose(fp);
-    printf("加载成功：%d个注册用户\n\n", reg_user_count);
+    printf("加载用户数据成功：%d个用户，文件：%s\n\n", reg_user_count, USER_FILE);
 }
 
 // 保存用户数据（修改后调用）
 static void Save_Reg_Users() {
-    FILE *fp = fopen(USER_FILE, "wb");
-    if (fp == NULL) {
-        perror("保存用户数据失败（fopen）");
-        return;
-    }
+    FILE *fp = fopen(USER_FILE, "w");// 文本模式（覆盖写入）
 
-    // 20251008新增修改：写入用户数+用户数据
-    if (fwrite(&reg_user_count, sizeof(int), 1, fp) != 1) {
-        perror("写入用户数失败");
-        fclose(fp);
+    //20251009新增大改：文本化存储用户数据
+    if (!fp) {
+        perror("Save_Reg_Users fopen failed");
         return;
     }
-    if (fwrite(reg_users, sizeof(RegUser), reg_user_count, fp) != reg_user_count) {
-        perror("写入数据不完整");
-        fclose(fp);
-        return;
+    // 第一行：注册用户总数
+    fprintf(fp, "%d\n", reg_user_count);
+    // 后续每行：一个用户的信息（字段用逗号分隔）
+    for (int i=0; i<reg_user_count; i++) {
+        RegUser *u = &reg_users[i];
+        // 格式：账号,密码,昵称,签名,头像,在线状态,好友数,好友1,好友2,...
+        fprintf(fp, "%s,%s,%s,%s,%s,%d,%d", 
+                u->account, u->password, u->nickname, u->signature, u->avatar,
+                u->online, u->friend_cnt);
+        // 追加好友列表
+        for (int j=0; j<u->friend_cnt; j++) {
+            fprintf(fp, ",%s", u->friends[j]);
+        }
+        fprintf(fp, "\n");
     }
 
     fclose(fp);
-    printf("保存成功：%d个注册用户\n\n", reg_user_count);
+    printf("保存用户数据成功：%d个用户，文件：%s\n\n", reg_user_count, USER_FILE);
 }   //-----------------------------
 
 // -------------------------- 工具函数 --------------------------
@@ -165,36 +204,50 @@ static ClientInfo *Find_Online_Client(const char *account) {
 }
 
 // 生成在线用户列表字符串（格式：账号:昵称:签名|...）
-static void Get_Online_User_Str(char *buf, int buf_len, ClientInfo *client) {
+static void Get_Online_User_Str(char *buf, int buf_len, ClientInfo *client) 
+{
     buf[0] = '\0';
-    for(int i=0; i<client_count; i++) {
-        if(clients[i].user.online) {
-             // 新增：添加在线状态标识（账号:昵称:签名:头像:状态（20251008新增头像字段））
-            char temp[256];
-            // 20251008新增修改：根据实际在线状态显示
-            const char *status = clients[i].user.online ? "在线" : "离线";
-            const char *avatar = strlen(clients[i].user.avatar) ? clients[i].user.avatar : "S:/8080icon_img.jpg"; //20251008新增
-            snprintf(temp, 256, "%s:%s:%s:%s:%s|", clients[i].user.account, clients[i].user.nickname, clients[i].user.signature,avatar, status);
 
-            strncat(buf, temp, buf_len - strlen(buf) - 1);
+    if (!client) return; // 避免空指针
+    // 1. 先获取当前用户的所有好友（含离线）
+    RegUser *cur_reg_user = Find_Reg_User(client->user.account);
+    if (cur_reg_user) {
+        for (int j=0; j<cur_reg_user->friend_cnt; j++) {
+            const char *friend_acc = cur_reg_user->friends[j];
+            // 2. 检查好友是否在线
+            ClientInfo *friend_client = Find_Online_Client(friend_acc);
+            const char *status = friend_client ? "在线" : "离线";
+            const char *nickname = friend_client ? friend_client->user.nickname : friend_acc; // 离线时用账号当昵称
+            const char *signature = friend_client ? friend_client->user.signature : "离线用户";
+            const char *avatar = friend_client ? (strlen(friend_client->user.avatar) ? friend_client->user.avatar : "S:/8080icon_img.jpg") : "S:/8080icon_img.jpg";
+            
+            // 3. 拼接好友信息
+            char temp[256];
+            snprintf(temp, 256, "%s:%s:%s:%s:%s|", friend_acc, nickname, signature, avatar, status);
+            if (strlen(buf) + strlen(temp) < buf_len - 1) {
+                strncat(buf, temp, buf_len - strlen(buf) - 1);
+            }
         }
     }
-
-    // 20251009新增：若无其他在线用户，仅返回当前请求用户（避免客户端列表为空）
-    if(strlen(buf) == 0 && client != NULL) {
-        char temp[256];
-        const char *status = "在线";
-        const char *avatar = strlen(client->user.avatar) ? client->user.avatar : "S:/8080icon_img.jpg";
-        snprintf(temp, 256, "%s:%s:%s:%s:%s", 
-                 client->user.account, 
-                 client->user.nickname, 
-                 client->user.signature, 
-                 avatar, 
-                 status);
-        strncat(buf, temp, buf_len - strlen(buf) - 1);
-
-    // 移除最后一个'|'
-    } else if(strlen(buf) > 0) {
+    // 4. 最后添加当前用户
+    char self_temp[256];
+    const char *self_status = client->user.online ? "在线" : "离线";
+    const char *self_avatar = strlen(client->user.avatar) ? client->user.avatar : "S:/8080icon_img.jpg";
+    // 生成当前用户信息（格式：账号:昵称:签名:头像:状态
+    snprintf(self_temp, 256, "%s:%s:%s:%s:%s", client->user.account, client->user.nickname, client->user.signature, self_avatar, self_status);
+    if (strlen(buf) == 0) 
+    {
+         // 空缓冲区直接拼接，保留原长度校验（避免溢出）
+        strncat(buf, self_temp, buf_len - 1);
+    } else {
+        //用strcat拼接分隔符“|”（固定单字符，且buf有足够空间）
+        strcat(buf, "|");
+        //strncat长度校验，确保不超出buf总长度
+        strncat(buf, self_temp, buf_len - strlen(buf) - 1);
+    }
+    // 移除最后一个'|'（若存在，确保客户端解析格式正确）
+    if (strlen(buf) > 0 && buf[strlen(buf)-1] == '|') 
+    {
         buf[strlen(buf)-1] = '\0';
     }
 }
@@ -328,7 +381,8 @@ static void Handle_Get_Online_User(ClientInfo *client) {
     {printf("Handle_Get_Online_User：发送用户列表失败\n");};
 }
 
-static void Handle_Add_Friend(NetMsg *msg, ClientInfo *client) {
+static void Handle_Add_Friend(NetMsg *msg, ClientInfo *client) 
+{
     // 查找目标用户
     RegUser *target = Find_Reg_User(msg->content);
     if(!target) {
@@ -343,18 +397,31 @@ static void Handle_Add_Friend(NetMsg *msg, ClientInfo *client) {
             return;
         }
     }
-    // 添加好友
+
+    // 20251009新增：添加好友（校验好友数量不超过上限）
+    if (client->user.friend_cnt >= 20) { // 好友数组最大20个
+        Send_ACK(client->sockfd, "add_friend", 0, NULL);
+        printf("添加好友失败：%s好友数量已达上限（20个）\n", client->user.account);
+        return;
+    }
 
     // 20250928修改：先复制，friend_cnt 稍后再增加
     snprintf(client->user.friends[client->user.friend_cnt], sizeof(client->user.friends[0]), "%s", target->account);
     client->user.friend_cnt++; // 复制成功后，再增加计数
 
-    // 更新注册用户的好友列表
+    // 20251009新增修改：更新注册用户的好友列表并保存（关键：确保持久化）
     RegUser *reg_user = Find_Reg_User(client->user.account);
-    *reg_user = client->user;
-    Send_ACK(client->sockfd, "add_friend", 1, NULL);
-    printf("添加好友：%s→%s\n\n", client->user.account, target->account);
-    Save_Reg_Users(); // 20250929新增：保存好友列表
+
+    if (reg_user) {
+        *reg_user = client->user;
+        Save_Reg_Users();
+        Send_ACK(client->sockfd, "add_friend", 1, reg_user); // 返回更新后的用户信息
+        printf("添加好友成功：%s→%s，当前好友数：%d\n", client->user.account, target->account, client->user.friend_cnt);
+    } else {
+        Send_ACK(client->sockfd, "add_friend", 0, NULL);
+        printf("添加好友失败：未找到用户%s\n", client->user.account);
+    }
+
 }
 
 static void Handle_Set_Signature(NetMsg *msg, ClientInfo *client) {
@@ -450,10 +517,14 @@ static void *Handle_Client(void *arg) {
             case MSG_SEND_MSG: {
                 // 20250929新增修改：解析「接收者账号:消息内容」（单聊转发）
                 char recv_account[32], msg_content[224];
-                if (sscanf(msg->content, "%[^:]:%s", recv_account, msg_content) != 2) {
-                    printf("消息格式错误：%s\n", msg->content);
+
+                // 20251009新增修改：支持含空格消息：%31[^:]限制账号长度，%223[^\n]获取所有字符（含空格）
+                if (sscanf(msg->content, "%31[^:]:%223[^\n]", recv_account, msg_content) != 2) {
+                    printf("消息格式错误（应为\"账号:消息\"）：%s\n", msg->content);
+                    Send_ACK(client->sockfd, "send_msg", 0, NULL); // 新增：返回错误ACK
                     break;
                 }
+
                 // 查找接收者客户端
                 ClientInfo *recv_client = Find_Online_Client(recv_account);
                 if (recv_client == NULL) {
