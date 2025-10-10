@@ -738,7 +738,7 @@ static void Create_Friend_Scr()
         return;
     }
 
-    lv_obj_set_size(g_chat_ctrl->friend_list, 300, 350);// 高度350，超出自动滚动
+    lv_obj_set_size(g_chat_ctrl->friend_list, 400, 350);// 宽度从300→400，适配更多信息。高度350，超出自动滚动
     lv_obj_align(g_chat_ctrl->friend_list, LV_ALIGN_TOP_MID, 0, 60);
     lv_obj_set_style_bg_color(g_chat_ctrl->friend_list, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);//20250927新增
     // printf("Create_Friend_Scr：好友列表控件创建成功（地址：%p）\n", g_chat_ctrl->friend_list);      //20251009新增
@@ -981,7 +981,7 @@ static void Create_Chat_Scr()
     
     // 20250930修改：聊天内容区域用lv_textarea（支持滚动）替代lv_label
     lv_obj_t *chat_content = lv_textarea_create(g_chat_ctrl->scr_chat);
-    lv_obj_set_size(chat_content, 300, 300);
+    lv_obj_set_size(chat_content, 400, 300);            // 20251010修改：宽度从300→400
     lv_obj_align(chat_content, LV_ALIGN_TOP_MID, 0, 50);// 20250930修改：20-50下移，避免与标题重叠
 
     // 20250930修改：在 LVGL v8.2 中实现只读效果的方法
@@ -1067,12 +1067,12 @@ static void Handle_Server_Msg(NetMsg *msg)
             if(strcmp(msg->content, "register") == 0) 
             {
                 if(msg->user.port == 1) 
-                { // ACK=1成功
-                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册成功！请登录");
+                { // ACK=1成功。注册成功
+                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册成功！1秒后返回登录");
                     usleep(1000000); // 延迟1秒切换
                     lv_scr_load(g_chat_ctrl->scr_login);
                 } else 
-                {   // ACK=0失败
+                {   // ACK=0失败。注册失败
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：账号已存在");
                 }
             } 
@@ -1261,7 +1261,7 @@ static void Handle_Server_Msg(NetMsg *msg)
                 char account[32], nickname[32], signature[64], avatar[64], status[10];
                 sscanf(token, "%[^:]:%[^:]:%s", account, nickname, signature);
 
-                // 20250930新增：解析状态字段 20251008修改解析格式：账号:昵称:签名:头像:状态（服务器端已修改）
+                // 20250930新增：解析状态字段 20251008修改解析格式：账号:昵称:签名:头像:状态
                 sscanf(token, "%[^:]:%[^:]:%[^:]:%[^:]:%s", account, nickname, signature, avatar, status);
 
                 // 添加列表项（显示昵称+签名+状态）20250927新增显示在线状态（MSG_USER_LIST仅返回在线用户）

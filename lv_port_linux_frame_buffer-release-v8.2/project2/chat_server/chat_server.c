@@ -12,6 +12,8 @@
 
 #include <errno.h>
 
+#include <time.h> // 20251010新增：用于时间函数
+
 #define SERVER_PORT 8888    // 服务器端口（需与客户端一致）
 #define MAX_CLIENT 10       // 最大连接数
 #define MAX_USER 100        // 最大注册用户数
@@ -69,6 +71,11 @@ typedef struct {
     int online; // 是否在线（1=在线，0=离线）
     char friends[20][32];// 20250927新增：好友账号列表
     int friend_cnt;      // 好友数量
+
+    // 20251010新增：离线消息（最多20条）
+    char offline_msgs[20][512]; 
+    int offline_msg_cnt; 
+
 } RegUser;
 
 // 客户端连接信息
@@ -271,8 +278,8 @@ static void Get_Online_User_Str(char *buf, int buf_len, ClientInfo *client)
     char self_temp[256];
     const char *self_status = client->user.online ? "在线" : "离线";
     const char *self_avatar = strlen(client->user.avatar) ? client->user.avatar : "S:/8080icon_img.jpg";
-    // 生成当前用户信息（格式：账号:昵称:签名:头像:状态
-    snprintf(self_temp, 256, "%s:%s:%s:%s:%s", client->user.account, client->user.nickname, client->user.signature, self_avatar, self_status);
+    // 生成当前用户信息（格式：账号:昵称:签名:头像:状态）20251010修改：添加“(当前用户)”标识
+    snprintf(self_temp, 256, "%s:%s(当前用户):%s:%s:%s", client->user.account, client->user.nickname, client->user.signature, self_avatar, self_status);
     if (strlen(buf) == 0) 
     {
          // 空缓冲区直接拼接，保留原长度校验（避免溢出）
@@ -291,12 +298,15 @@ static void Get_Online_User_Str(char *buf, int buf_len, ClientInfo *client)
 }
 
 // 广播消息给所有在线客户端
-static void Broadcast_Msg(NetMsg *msg, int exclude_fd) {
+static void Broadcast_Msg(NetMsg *msg, int exclude_fd) 
+{
+    pthread_mutex_lock(&data_mutex);// 广播给所有在线客户端（排除发送者自己）
     for(int i=0; i<client_count; i++) {
         if(clients[i].sockfd != exclude_fd && clients[i].user.online) {
             send(clients[i].sockfd, msg, sizeof(NetMsg), 0);
         }
     }
+    pthread_mutex_unlock(&data_mutex);
 }
 
 // -----------20250927新增：发送ACK应答---------------------------
@@ -402,7 +412,8 @@ static void Handle_Login(NetMsg *msg, ClientInfo *client) {
     if(strcmp(reg_user->password, msg->user.password) != 0) {
         // 密码错误：仅返回账号（避免传递多余信息）
         Send_ACK(client->sockfd, "login", 0, NULL); 
-        printf("登录失败：账号%s密码错误（正确密码：%s）\n\n", msg->user.account, reg_user->password);
+        printf("登录失败：账号%s密码错误（输入：%s，正确：%s）\n\n",
+             msg->user.account, msg->user.password, reg_user->password);//20251010修改
         return;
     }
 
@@ -411,6 +422,27 @@ static void Handle_Login(NetMsg *msg, ClientInfo *client) {
     client->user.online = 1;// 强制设为1在线状态，避免未初始化
     Send_ACK(client->sockfd, "login", 1, reg_user); // 传递reg_user，返回完整信息（账号、昵称、头像）。成功ACK
     printf("用户%s（昵称：%s）登录成功，返回ACK=1\n\n", msg->user.account, reg_user->nickname);
+
+    // 20251010新增：推送离线消息
+    if (reg_user && reg_user->offline_msg_cnt > 0) {
+        printf("向[%s]推送离线消息（共%d条）\n", reg_user->account, reg_user->offline_msg_cnt);
+        for (int i=0; i<reg_user->offline_msg_cnt; i++) {
+            // 解析离线消息：发送者昵称|内容|时间
+            char sender[32], content[256], time[32];
+            sscanf(reg_user->offline_msgs[i], "%[^|]|%[^|]|%s", sender, content, time);
+            // 构造单聊消息
+            NetMsg offline_msg;
+            memset(&offline_msg, 0, sizeof(offline_msg));
+            offline_msg.type = MSG_SEND_MSG;
+            strncpy(offline_msg.user.nickname, sender, sizeof(offline_msg.user.nickname)-1);
+            strncpy(offline_msg.content, content, sizeof(offline_msg.content)-1);
+            // 发送给客户端
+            send(client->sockfd, &offline_msg, sizeof(offline_msg), 0);
+        }
+        // 清空离线消息
+        reg_user->offline_msg_cnt = 0;
+        Save_Reg_Users();
+    }
 }
 
 static void Handle_Get_Online_User(ClientInfo *client) {
@@ -523,10 +555,9 @@ static void Handle_Group_Chat(NetMsg *msg, ClientInfo *client) {
     strncpy(group_msg.user.nickname, client->user.nickname, sizeof(group_msg.user.nickname)-1); // 发送者昵称
     snprintf(group_msg.content, sizeof(group_msg.content), "%s", msg_content);
 
-    // 广播给所有在线客户端（排除发送者自己）
-    pthread_mutex_lock(&data_mutex);
-    Broadcast_Msg(&group_msg, client->sockfd);  // 20251008新增修改：调用已定义的广播函数
-    pthread_mutex_unlock(&data_mutex);
+    //20251010新增修改：广播给所有在线客户端（排除发送者）
+    Broadcast_Msg(&group_msg, client->sockfd);//20251008新增修改：调用已定义的广播函数
+    printf("群聊广播：%s（群ID：%s）→ 所有在线用户\n", client->user.nickname, group_id);
 
     // 20251009新增大改：获取当前时间并格式化---------------
     time_t now = time(NULL);
@@ -618,11 +649,30 @@ static void *Handle_Client(void *arg) {
                 // 修复3：区分“接收者不存在”和“接收者离线”
                 ClientInfo *recv_client = Find_Online_Client(recv_account);
                 RegUser *recv_reg = Find_Reg_User(recv_account);
-                if (recv_client == NULL) {
-                    const char *err_msg = (recv_reg == NULL) ? "接收者账号不存在" : "接收者离线";
-                    printf("[%s] 单聊转发失败：%s（接收者：%s）\n",
-                           client->user.account, err_msg, recv_account);
-                    Send_ACK(client->sockfd, "send_msg", 0, NULL);
+                if (recv_client == NULL) 
+                {   
+                    // 20251010新增：定义time_str并获取当前时间（格式：2024-06-19 15:30:00）
+                    char time_str[32];
+                    time_t now = time(NULL);
+                    struct tm *t = localtime(&now);
+                    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", t);
+
+                    //20251010新增大改：存储离线消息
+                    if (recv_reg != NULL) { // 接收者存在但离线→存储离线消息
+                        if (recv_reg->offline_msg_cnt < 20) { // 限制20条离线消息
+                            // 格式：发送者昵称|消息内容|时间
+                            snprintf(recv_reg->offline_msgs[recv_reg->offline_msg_cnt], 512, 
+                                     "%s|%s|%s", client->user.nickname, msg_content, time_str);
+                            recv_reg->offline_msg_cnt++;
+                            Save_Reg_Users(); // 持久化离线消息
+                            printf("[%s] 接收者[%s]离线，存储离线消息（共%d条）\n", 
+                                   time_str, recv_account, recv_reg->offline_msg_cnt);
+                        }
+                        Send_ACK(client->sockfd, "send_msg", 1, NULL); // 提示发送成功
+                    } else { // 接收者不存在
+                        Send_ACK(client->sockfd, "send_msg", 0, NULL);
+                        printf("单聊转发失败：接收者[%s]不存在\n", recv_account);
+                    }
                     break;
                 }
                 
@@ -653,8 +703,8 @@ static void *Handle_Client(void *arg) {
                 ssize_t send_ret = send(recv_client->sockfd, &send_msg, sizeof(send_msg), 0); //20251009新增
 
                 if (send_ret > 0) 
-                {
-                    printf("%s 单聊转发成功：\n", time_str);
+                {   // 打印完整聊天信息
+                    printf("[%s] 单聊转发成功：\n", time_str);
                     printf("  发送者：昵称=%s，账号=%s，IP=%s\n",
                            client->user.nickname, client->user.account, inet_ntoa(client->addr.sin_addr));
                     printf("  接收者：昵称=%s，账号=%s，IP=%s\n",
