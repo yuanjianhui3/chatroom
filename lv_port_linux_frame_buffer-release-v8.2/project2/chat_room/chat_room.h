@@ -62,6 +62,7 @@ typedef struct {
     lv_obj_t *scr_chat;  // 聊天窗口界面
     lv_obj_t *friend_list; // 好友列表控件
     char cur_account[32];// 当前登录账号
+    char cur_nickname[32];// 20251010新增：当前登录用户昵称（用于显示发送者）
 
     lv_obj_t *scr_setting; // 设置界面（个性签名/头像）
     bool exiting;   // 20250928新增退出标志

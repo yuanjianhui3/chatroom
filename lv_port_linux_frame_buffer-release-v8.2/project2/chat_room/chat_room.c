@@ -12,7 +12,6 @@
 #include <pthread.h>
 
 #include <ifaddrs.h>  // 动态获取IP所需头文件
-#include "../common/chat_adapt.h"
 
 // 服务器配置（新手需替换为华为云/阿里云IP和端口）
 #define SERVER_IP "8.134.200.90"  // 如"121.43.xxx.xxx"
@@ -930,17 +929,19 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
         snprintf(msg.content, sizeof(msg.content)-1, "default:%s", trim_msg);
     }
     else {
-        // 单聊：校验好友账号非空
-        if (strlen(g_chat_ctrl->chat_friend_account) == 0) {
-            printf("Send_Msg_Click：未选择好友，跳过发送\n");
+        // 20251010修改：单聊：校验好友账号非空且有效。聊好友账号正确性校验
+        if (strlen(g_chat_ctrl->chat_friend_account) == 0 || strchr(g_chat_ctrl->chat_friend_account, '?') != NULL)
+        {
+            printf("Send_Msg_Click：好友账号无效（空或含特殊字符）未选择好友，跳过发送。\n\n");
             return;
         }
         msg.type = MSG_SEND_MSG;
+        // 格式：好友账号:消息（确保无多余字符）
         snprintf(msg.content, sizeof(msg.content)-1, "%s:%s", 
         g_chat_ctrl->chat_friend_account, trim_msg);
 
         // 20251009新增日志：确认发送格式（新手可验证是否为“接收者账号:消息”）
-        printf("Send_Msg_Click：单聊发送 → content=%s\n", msg.content);
+        printf("Send_Msg_Click：单聊发送 → content=%s\n\n", msg.content);
 
     }
 
@@ -948,7 +949,12 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
     if (Send_To_Server(&msg) > 0) 
     {
         lv_textarea_set_text(g_chat_ctrl->chat_msg_ta, ""); // 清空输入框
-        const char *sender = is_group_chat ? "我(群聊)" : "我";
+
+        // 20251010修改：用当前用户昵称显示发送者，群聊加标识。替代const char *sender = is_group_chat ? "我(群聊)" : "我";
+        char sender_buf[64] = {0};
+        const char *sender = is_group_chat ? 
+        (snprintf(sender_buf, sizeof(sender_buf), "%s(群聊)", g_chat_ctrl->cur_nickname),sender_buf) : g_chat_ctrl->cur_nickname;
+
         char new_msg[300] = {0};
         const char *current_content = lv_textarea_get_text(g_chat_ctrl->chat_content_ta);
 
@@ -1068,9 +1074,11 @@ static void Handle_Server_Msg(NetMsg *msg)
             {
                 if(msg->user.port == 1) 
                 { // ACK=1成功。注册成功
-                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册成功！1秒后返回登录");
+                    lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册成功！1秒后返回登录界面");
                     usleep(1000000); // 延迟1秒切换
                     lv_scr_load(g_chat_ctrl->scr_login);
+                    lv_refr_now(lv_disp_get_default()); // 20251010新增：强制刷新界面，避免提示不显示
+                    printf("注册成功：账号%s，已返回登录界面\n\n", msg->user.account);// 20251010新增：打印日志便于调试
                 } else 
                 {   // ACK=0失败。注册失败
                     lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：账号已存在");
@@ -1087,6 +1095,10 @@ static void Handle_Server_Msg(NetMsg *msg)
                 if(msg->user.port == 1) 
                 { // ACK=1成功。无论content是否为空，均判定登录成功（容错处理）
                     strncpy(g_chat_ctrl->cur_account, msg->user.account, 31);
+
+                    // 20251010新增：赋值当前用户昵称
+                    strncpy(g_chat_ctrl->cur_nickname, msg->user.nickname, sizeof(g_chat_ctrl->cur_nickname)-1);
+
                     printf("客户端：登录成功，账号：%s\n\n", g_chat_ctrl->cur_account);
 
                     // 20251010新增：保存账号，下次免登录
@@ -1268,7 +1280,8 @@ static void Handle_Server_Msg(NetMsg *msg)
                 char item_text[120];    //20250930修改100-120
 
                 // 20251009修改：确保文本不溢出，显示“昵称(签名)[状态]”处理签名为空的情况，避免显示异常，统一格式。
-                snprintf(item_text, sizeof(item_text)-1, "%s(%s)[%s]", nickname, strlen(signature) ? signature : "无签名", status);
+                snprintf(item_text, sizeof(item_text)-1, "%s(%s)[%s]", nickname,
+                strlen(signature) ? signature : "无签名", strcmp(status, "在线") == 0 ? "●在线" : "○离线");
 
                 // 添加列表项并存储好友信息（账号+头像）
                 lv_obj_t *item = lv_list_add_btn(g_chat_ctrl->friend_list, NULL, item_text);

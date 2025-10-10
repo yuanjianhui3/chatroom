@@ -181,7 +181,7 @@ static void Load_Reg_Users()
         // 限制好友数不超过20（避免数组越界）
         if (u->friend_cnt > 20) u->friend_cnt = 20;
 
-        // 字段8~n：好友列表（最多20个）
+        // 字段8~n：解析好友列表（最多20个）（仅账号）
         for (int j=0; j<u->friend_cnt; j++) {
             token = strtok(NULL, ",");
             if (token) strncpy(u->friends[j], token, sizeof(u->friends[j])-1);
@@ -297,15 +297,23 @@ static void Get_Online_User_Str(char *buf, int buf_len, ClientInfo *client)
     }
 }
 
-// 广播消息给所有在线客户端
+// 广播消息给所有在线客户端（排除发送者自己）
 static void Broadcast_Msg(NetMsg *msg, int exclude_fd) 
 {
-    pthread_mutex_lock(&data_mutex);// 广播给所有在线客户端（排除发送者自己）
-    for(int i=0; i<client_count; i++) {
-        if(clients[i].sockfd != exclude_fd && clients[i].user.online) {
-            send(clients[i].sockfd, msg, sizeof(NetMsg), 0);
+    pthread_mutex_lock(&data_mutex);
+
+    int broadcast_cnt = 0;
+    for(int i=0; i<client_count; i++)
+    {
+        if(clients[i].sockfd != exclude_fd && clients[i].user.online) 
+        {
+           if(send(clients[i].sockfd, msg, sizeof(NetMsg), 0) > 0) 
+            {
+                broadcast_cnt++;
+            }
         }
     }
+    printf("群聊广播完成：共发送给%d个在线用户\n", broadcast_cnt);
     pthread_mutex_unlock(&data_mutex);
 }
 
@@ -541,7 +549,8 @@ static void Handle_Set_Avatar(NetMsg *msg, ClientInfo *client) {
 }
 
 // 20250929新增：群聊消息处理（广播给所有在线客户端）
-static void Handle_Group_Chat(NetMsg *msg, ClientInfo *client) {
+static void Handle_Group_Chat(NetMsg *msg, ClientInfo *client) 
+{
     // 解析群ID（此处简化为“default”默认群）
     char group_id[32], msg_content[224];    //20251008修改后：支持含空格消息，限制长度避免溢出
     if (sscanf(msg->content, "%31[^:]:%223[^\n]", group_id, msg_content) != 2) {
@@ -658,20 +667,21 @@ static void *Handle_Client(void *arg) {
                     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", t);
 
                     //20251010新增大改：存储离线消息
-                    if (recv_reg != NULL) { // 接收者存在但离线→存储离线消息
+                    if (recv_reg != NULL) 
+                    { // 接收者存在但离线→存储离线消息
                         if (recv_reg->offline_msg_cnt < 20) { // 限制20条离线消息
                             // 格式：发送者昵称|消息内容|时间
                             snprintf(recv_reg->offline_msgs[recv_reg->offline_msg_cnt], 512, 
                                      "%s|%s|%s", client->user.nickname, msg_content, time_str);
                             recv_reg->offline_msg_cnt++;
-                            Save_Reg_Users(); // 持久化离线消息
-                            printf("[%s] 接收者[%s]离线，存储离线消息（共%d条）\n", 
+                            Save_Reg_Users(); // 持久化离线消息.立即保存，防止服务器重启丢失
+                            printf("[%s] 接收者[%s]离线，存储离线消息（共%d条）\n\n", 
                                    time_str, recv_account, recv_reg->offline_msg_cnt);
                         }
                         Send_ACK(client->sockfd, "send_msg", 1, NULL); // 提示发送成功
                     } else { // 接收者不存在
-                        Send_ACK(client->sockfd, "send_msg", 0, NULL);
-                        printf("单聊转发失败：接收者[%s]不存在\n", recv_account);
+                        Send_ACK(client->sockfd, "send_msg", 0, NULL);// 告知客户端发送失败
+                        printf("单聊转发失败：接收者[%s]不存在，离线消息已满（20条）消息丢弃\n\n", recv_account);
                     }
                     break;
                 }
