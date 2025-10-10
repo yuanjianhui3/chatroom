@@ -92,7 +92,8 @@ int reg_user_count = 0;          // 注册用户数
 pthread_mutex_t data_mutex;      // 数据保护互斥锁
 
 // 20250929新增：用户数据持久化---------加载用户数据（启动时调用）
-static void Load_Reg_Users() {
+static void Load_Reg_Users() 
+{
     FILE *fp = fopen(USER_FILE, "r");// 文本模式
 
     //20251009新增大改：文本化加载用户数据
@@ -104,6 +105,7 @@ static void Load_Reg_Users() {
         printf("用户数据文件[%s]不存在，初始化空列表\n", USER_FILE);
         return;
     }
+
     // 读取用户总数
     if (fscanf(fp, "%d\n", &reg_user_count) != 1) {
         printf("读取用户数失败，初始化空列表\n");
@@ -113,40 +115,76 @@ static void Load_Reg_Users() {
     }
     if (reg_user_count > MAX_USER) reg_user_count = MAX_USER;
     memset(reg_users, 0, sizeof(reg_users)); // 清空原有数据
-    
-    // 读取每个用户的信息
-    for (int i=0; i<reg_user_count; i++) {
-        RegUser *u = &reg_users[i];
-        char line[1024] = {0};
-        fgets(line, 1024, fp); // 读取整行
-        // 解析字段（账号,密码,昵称,签名,头像,在线,好友数,好友1,...）
+
+    // 20251009新增大改1：忽略文件第一行的用户数，手动统计有效用户（避免文件数据错误）
+    char first_line[32] = {0};
+    fgets(first_line, 32, fp); // 读取第一行（丢弃，不用文件中的用户数）
+    reg_user_count = 0; // 重新计数有效用户
+    memset(reg_users, 0, sizeof(reg_users)); // 清空原有数据
+
+    // 修复2：循环读取所有行，只加载有效用户（字段完整+账号非空）
+    char line[1024] = {0};
+    while (fgets(line, 1024, fp) != NULL && reg_user_count < MAX_USER) 
+    {
+        RegUser *u = &reg_users[reg_user_count];
+        line[strcspn(line, "\n")] = '\0';   // 20251009新增：去除换行符（仅1次读取）
+
+        // 跳过空行或纯逗号行
+        if (strlen(line) == 0 || strspn(line, ",") == strlen(line) || (reg_user_count == 0 && isdigit(line[0]))) {
+            printf("Load_Reg_Users：跳过无效行（空行/纯逗号/用户数行）\n");
+            continue;
+        }
+
+        // 解析字段（严格判断每个token是否存在，避免访问NULL），确保账号/密码/昵称非空
         char *token = strtok(line, ",");
-        if (!token) break;
+        // 字段1：账号（必须非空，否则跳过）
+        if (!token || strlen(token) == 0) {
+            printf("Load_Reg_Users：用户%d无有效账号，跳过\n", reg_user_count);
+            continue;
+        }
         strncpy(u->account, token, sizeof(u->account)-1);
-        
+
+        // 字段2：密码（为空则设默认）
         token = strtok(NULL, ",");
         if (token) strncpy(u->password, token, sizeof(u->password)-1);
-        
+        else strcpy(u->password, ""); // 避免未初始化
+
+        // 字段3：昵称（为空则用账号）
         token = strtok(NULL, ",");
-        if (token) strncpy(u->nickname, token, sizeof(u->nickname)-1);
-        
+        if (token && strlen(token) > 0) strncpy(u->nickname, token, sizeof(u->nickname)-1);
+        else strncpy(u->nickname, u->account, sizeof(u->nickname)-1);
+
+        // 字段4：签名（为空则设默认）
         token = strtok(NULL, ",");
         if (token) strncpy(u->signature, token, sizeof(u->signature)-1);
-        
+        else strcpy(u->signature, "默认签名");
+
+        // 字段5：头像（为空则用默认路径）
         token = strtok(NULL, ",");
-        if (token) strncpy(u->avatar, token, sizeof(u->avatar)-1);
-        
+        if (token && strlen(token) > 0) strncpy(u->avatar, token, sizeof(u->avatar)-1);
+        else strcpy(u->avatar, "S:/8080icon_img.jpg");
+
+        // 字段6：在线状态（为空则设0）
         token = strtok(NULL, ",");
-        if (token) u->online = atoi(token);
-        
+        u->online = token ? atoi(token) : 0;
+
+        // 字段7：好友数（为空则设0）
         token = strtok(NULL, ",");
-        if (token) u->friend_cnt = atoi(token);
-        
-        // 解析好友列表
-        for (int j=0; j<u->friend_cnt && j<20; j++) {
+        u->friend_cnt = token ? atoi(token) : 0;
+        // 限制好友数不超过20（避免数组越界）
+        if (u->friend_cnt > 20) u->friend_cnt = 20;
+
+        // 字段8~n：好友列表（最多20个）
+        for (int j=0; j<u->friend_cnt; j++) {
             token = strtok(NULL, ",");
             if (token) strncpy(u->friends[j], token, sizeof(u->friends[j])-1);
+            else break; // 字段不足时停止
         }
+
+        // 有效用户：计数+1并打印日志
+        reg_user_count++;
+        printf("Load_Reg_Users：加载有效用户%d → 账号=%s，密码=%s，昵称=%s\n", 
+               reg_user_count-1, u->account, u->password, u->nickname);
     }
 
     fclose(fp);
@@ -355,12 +393,19 @@ static void Handle_Login(NetMsg *msg, ClientInfo *client) {
         printf("登录失败：账号%s不存在\n\n", msg->user.account); // 20250930新增日志
         return;
     }
-    // 验证密码。（确保返回账号和在线状态）确保登录成功时返回完整用户信息，客户端可正确显示昵称和头像。
-    if(strcmp(reg_user->password, msg->user.password) != 0) {
-        Send_ACK(client->sockfd, "login", 0, reg_user);// 20250930新增：传reg_user，确保账号回传
-        printf("登录失败：账号%s密码错误\n\n", msg->user.account); // 20250930新增日志
+    // 20251009新增大改：验证密码。（增加reg_user非空校验，避免极端情况）
+    if (!reg_user) {
+        Send_ACK(client->sockfd, "login", 0, NULL);
+        printf("登录失败：内部错误（reg_user为NULL）\n\n");
         return;
     }
+    if(strcmp(reg_user->password, msg->user.password) != 0) {
+        // 密码错误：仅返回账号（避免传递多余信息）
+        Send_ACK(client->sockfd, "login", 0, NULL); 
+        printf("登录失败：账号%s密码错误（正确密码：%s）\n\n", msg->user.account, reg_user->password);
+        return;
+    }
+
     // 标记在线（关键：确保online=1）
     client->user = *reg_user;
     client->user.online = 1;// 强制设为1在线状态，避免未初始化
@@ -482,7 +527,28 @@ static void Handle_Group_Chat(NetMsg *msg, ClientInfo *client) {
     pthread_mutex_lock(&data_mutex);
     Broadcast_Msg(&group_msg, client->sockfd);  // 20251008新增修改：调用已定义的广播函数
     pthread_mutex_unlock(&data_mutex);
-    printf("群聊广播：%s（%s）→%s\n\n", client->user.nickname, group_id, msg_content);
+
+    // 20251009新增大改：获取当前时间并格式化---------------
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    char time_str[32];
+    strftime(time_str, 32, "[%Y-%m-%d %H:%M:%S]", t);
+    
+    // 20251010新增：解析群聊消息格式（增加调试）
+    if (sscanf(msg->content, "%31[^:]:%223[^\n]", group_id, msg_content) != 2) {
+        printf("群聊消息格式错误：%s → 正确格式：群ID:消息内容\n", msg->content);
+        return;
+    }
+    // 20251010新增：广播后打印日志（原逻辑保留，增加解析成功提示）
+    printf("%s 群聊消息解析成功：\n", time_str);
+    printf("  原始消息：%s\n  解析后群ID：%s，消息内容：%s\n", msg->content, group_id, msg_content);
+
+    // 打印带时间戳的群聊日志（含发送者账号+群ID）
+    printf("%s 群聊广播成功：\n", time_str);
+    printf("  发送者：%s（账号：%s）\n  群ID：%s\n  消息内容：%s\n  接收人数：%d（排除发送者）\n\n",
+        client->user.nickname, client->user.account,
+        group_id, msg_content,
+        client_count - 1); // 客户端总数-1（排除发送者）
 }
 
 // -------------------------- 客户端处理线程 --------------------------
@@ -521,23 +587,45 @@ static void *Handle_Client(void *arg) {
             case MSG_GET_ONLINE_USER: Handle_Get_Online_User(client); break;    //调用在线用户 消息处理函数
             case MSG_SET_AVATAR: Handle_Set_Avatar(msg, client); break;          // 20250929新增头像处理
             case MSG_GROUP_CHAT: Handle_Group_Chat(msg, client); break;         // 新增群聊处理
-            case MSG_SEND_MSG: {
+            case MSG_SEND_MSG: 
+            {
                 // 20250929新增修改：解析「接收者账号:消息内容」（单聊转发）
-                char recv_account[32], msg_content[224];
+                char recv_account[32] = {0}, msg_content[224] = {0};
 
-                // 20251009新增修改：支持含空格消息：%31[^:]限制账号长度，%223[^\n]获取所有字符（含空格）
-                if (sscanf(msg->content, "%31[^:]:%223[^\n]", recv_account, msg_content) != 2) {
-                    printf("消息格式错误（应为\"账号:消息\"）：%s\n", msg->content);
-                    Send_ACK(client->sockfd, "send_msg", 0, NULL); // 新增：返回错误ACK
+                int parse_ret = sscanf(msg->content, "%31[^:]:%223[^\n]", recv_account, msg_content);
+
+                // 修复1：细化格式错误场景，打印具体原因
+                if (parse_ret != 2) {
+                    const char *err_msg = (parse_ret == 0) ? "未解析到账号和消息" : "未解析到消息内容";
+                    printf("[%s] 单聊消息格式错误（正确格式：账号:消息）：%s → 错误：%s\n",
+                           client->user.account, msg->content, err_msg);
+                    Send_ACK(client->sockfd, "send_msg", 0, NULL);
                     break;
                 }
 
-                // 查找接收者客户端
+                // 修复2：校验账号和消息非空
+                if (strlen(recv_account) == 0) {
+                    printf("[%s] 单聊转发失败：接收者账号为空\n", client->user.account);
+                    Send_ACK(client->sockfd, "send_msg", 0, NULL);
+                    break;
+                }
+                if (strlen(msg_content) == 0) {
+                    printf("[%s] 单聊转发失败：消息内容为空\n", client->user.account);
+                    Send_ACK(client->sockfd, "send_msg", 0, NULL);
+                    break;
+                }
+
+                // 修复3：区分“接收者不存在”和“接收者离线”
                 ClientInfo *recv_client = Find_Online_Client(recv_account);
+                RegUser *recv_reg = Find_Reg_User(recv_account);
                 if (recv_client == NULL) {
-                    Send_ACK(client->sockfd, "send_msg", 0, NULL); // 接收者离线
+                    const char *err_msg = (recv_reg == NULL) ? "接收者账号不存在" : "接收者离线";
+                    printf("[%s] 单聊转发失败：%s（接收者：%s）\n",
+                           client->user.account, err_msg, recv_account);
+                    Send_ACK(client->sockfd, "send_msg", 0, NULL);
                     break;
                 }
+                
                 // 构造转发消息
                 NetMsg send_msg;
                 memset(&send_msg, 0, sizeof(send_msg));
@@ -547,19 +635,42 @@ static void *Handle_Client(void *arg) {
                 UserInfo *send_user = &send_msg.user;
                 // 复制RegUser中与UserInfo对应的字段
                 strncpy(send_user->account, client->user.account, sizeof(send_user->account)-1);
-                strncpy(send_user->nickname, client->user.nickname, sizeof(send_user->nickname)-1);
-                strncpy(send_user->signature, client->user.signature, sizeof(send_user->signature)-1);
-                strncpy(send_user->avatar, client->user.avatar, sizeof(send_user->avatar)-1);
-                send_user->port = client->user.online; // 复用port字段传递在线状态（不影响核心逻辑）
-                
+
+                // 20251009新增大改：确保发送者昵称非空（用账号兜底）（确保日志显示聊天内容）
+                const char *sender_nick = strlen(client->user.nickname) > 0 ? client->user.nickname : client->user.account;
+                strncpy(send_user->nickname, sender_nick, sizeof(send_user->nickname)-1);
+                // 补充：打印消息解析日志（新手可验证格式）
+                printf("Handle_Send_Msg：解析消息 → 接收者=%s，内容=%s\n", recv_account, msg_content);
+
                 strncpy(send_msg.content, msg_content, sizeof(send_msg.content)-1);
+
                 // 转发给接收者
-                send(recv_client->sockfd, &send_msg, sizeof(send_msg), 0);
-                Send_ACK(client->sockfd, "send_msg", 1, NULL); // 发送成功
+                // 20251009新增大改：获取当前时间并格式化。打印完整日志（含时间戳、IP、消息内容）
+                time_t now = time(NULL);
+                struct tm *t = localtime(&now);
+                char time_str[32];
+                strftime(time_str, 32, "[%Y-%m-%d %H:%M:%S]", t);
+                ssize_t send_ret = send(recv_client->sockfd, &send_msg, sizeof(send_msg), 0); //20251009新增
+
+                if (send_ret > 0) 
+                {
+                    printf("%s 单聊转发成功：\n", time_str);
+                    printf("  发送者：昵称=%s，账号=%s，IP=%s\n",
+                           client->user.nickname, client->user.account, inet_ntoa(client->addr.sin_addr));
+                    printf("  接收者：昵称=%s，账号=%s，IP=%s\n",
+                           recv_client->user.nickname, recv_client->user.account, inet_ntoa(recv_client->addr.sin_addr));
+                    printf("  消息内容：%s\n  转发字节数：%zd\n\n", msg_content, send_ret);
+                    Send_ACK(client->sockfd, "send_msg", 1, NULL);
+                }
+                else {
+                    printf("%s 单聊转发失败：发送字节数=%zd，错误码=%d\n",
+                           time_str, send_ret, errno);
+                    Send_ACK(client->sockfd, "send_msg", 0, NULL);
+                    break;
+                }
                 break;
             }
 
-            
             case MSG_ADD_FRIEND: Handle_Add_Friend(msg, client); break;        //调用添加好友 消息处理函数
             case MSG_SET_SIGNATURE: Handle_Set_Signature(msg, client); break;  //调用个性签名 消息处理函数
 

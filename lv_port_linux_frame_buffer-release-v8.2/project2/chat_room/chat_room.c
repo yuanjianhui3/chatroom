@@ -429,12 +429,22 @@ static void Do_Register(lv_event_t *e)
     // 20250930新增：输入非空校验。20251008新增修改：细化非空判断
     if(strlen(account) == 0) {
         lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：账号不能为空");
+        printf("注册校验：账号为空\n");
         return;
     } else if(strlen(pwd) == 0) {
         lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：密码不能为空");
+        printf("注册校验：密码为空\n");
         return;
     } else if(strlen(nick) == 0) {
         lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：昵称不能为空");
+        printf("注册校验：昵称为空\n");
+        return;
+    }
+
+    // 20251010新增：账号长度校验（避免过长）
+    else if(strlen(account) > 31) {
+        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_register, 0), "注册失败：账号长度不能超过31位");
+        printf("注册校验：账号过长（%d位）\n", strlen(account));
         return;
     }
 
@@ -792,22 +802,41 @@ static void Create_Friend_Scr()
 // 新增：退出登录回调（通知服务器+返回登录界面）
 static void Logout_Btn_Task(lv_event_t *e)
 {
+
+    // 20251009新增：第一步校验g_chat_ctrl有效性，避免空指针访问
+    if (!g_chat_ctrl) {
+        printf("Logout_Btn_Task：g_chat_ctrl已释放，跳过处理\n");
+        return;
+    }
+
+    // 20251009新增：提前保存登录界面指针（避免后续释放后无法访问）
+    lv_obj_t *scr_login = g_chat_ctrl->scr_login;
+    if (!scr_login || !lv_obj_is_valid(scr_login)) {
+        printf("Logout_Btn_Task：登录界面无效，无法切换\n");
+        return;
+    }
+
     // 1. 发送离线消息到服务器
     NetMsg offline_msg;
     memset(&offline_msg, 0, sizeof(offline_msg));
     offline_msg.type = MSG_LOGOUT;
     strncpy(offline_msg.user.account, g_chat_ctrl->cur_account, 31);
-    Send_To_Server(&offline_msg);
 
-    // 2. 清空当前账号，返回登录界面
+    //20251009新增修改：
+    if (Send_To_Server(&offline_msg) > 0) {
+        printf("Logout_Btn_Task：发送离线消息成功（账号：%s）\n", g_chat_ctrl->cur_account);
+    } else {
+        printf("Logout_Btn_Task：发送离线消息失败\n");
+    }
+
+    // 2. 仅清空当前登录状态（不释放资源，保留sockfd和线程）返回登录界面
     memset(g_chat_ctrl->cur_account, 0, sizeof(g_chat_ctrl->cur_account));
 
     memset(g_saved_cur_account, 0, sizeof(g_saved_cur_account)); // 20251009新增：清空保存的账号
-    Chat_Room_Exit(); //20251009新增：释放g_chat_ctrl，允许重新初始化，销毁旧界面
+    printf("Logout_Btn_Task：已清空登录账号，保留聊天室资源\n");    //20251009新增
 
-    Create_Login_Scr();     //20251009新增：重新创建登录界面（确保登录界面可用）
-
-    lv_scr_load(g_chat_ctrl->scr_login);
+    lv_scr_load(scr_login); // 20251009新增修改：切换到登录界面（使用提前保存的指针，不访问g_chat_ctrl）
+    printf("Logout_Btn_Task：成功切换到登录界面，无段错误\n");  // 20251009新增
 }
 
 // ------------------------------------20250929新增：新增Refresh_Friend_List回调实现-------
@@ -899,7 +928,8 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
         // 群聊：格式"default:消息"（20251009修改：用trim_msg）
         msg.type = MSG_GROUP_CHAT;
         snprintf(msg.content, sizeof(msg.content)-1, "default:%s", trim_msg);
-    } else {
+    }
+    else {
         // 单聊：校验好友账号非空
         if (strlen(g_chat_ctrl->chat_friend_account) == 0) {
             printf("Send_Msg_Click：未选择好友，跳过发送\n");
@@ -907,7 +937,11 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
         }
         msg.type = MSG_SEND_MSG;
         snprintf(msg.content, sizeof(msg.content)-1, "%s:%s", 
-                 g_chat_ctrl->chat_friend_account, trim_msg);
+        g_chat_ctrl->chat_friend_account, trim_msg);
+
+        // 20251009新增日志：确认发送格式（新手可验证是否为“接收者账号:消息”）
+        printf("Send_Msg_Click：单聊发送 → content=%s\n", msg.content);
+
     }
 
     // 5. 发送消息并更新本地聊天记录
@@ -917,8 +951,16 @@ static void Enter_Group_Chat(lv_event_t *e) {   //20250929新增：进入群聊�
         const char *sender = is_group_chat ? "我(群聊)" : "我";
         char new_msg[300] = {0};
         const char *current_content = lv_textarea_get_text(g_chat_ctrl->chat_content_ta);
-        // 拼接新消息（确保不越界）
-        snprintf(new_msg, sizeof(new_msg)-1, "%s: %s\n%s", sender, trim_msg, current_content);
+
+        // 20251009新增：获取当前时间并格式化（与日志文件格式完全一致）
+        time_t now = time(NULL);
+        struct tm *t = localtime(&now);
+        char time_str[32];
+        strftime(time_str, 32, "[%Y-%m-%d %H:%M:%S]", t);
+
+        // 20251009修改：拼接新消息（确保不越界）（包含时间戳+发送者+内容，与历史记录格式统一）
+        snprintf(new_msg, sizeof(new_msg)-1, "%s %s: %s\n%s",time_str, sender, trim_msg, current_content);
+
         lv_textarea_set_text(g_chat_ctrl->chat_content_ta, new_msg);
         lv_textarea_set_cursor_pos(g_chat_ctrl->chat_content_ta, strlen(new_msg)); // 滚动到底部
 
@@ -936,7 +978,7 @@ static void Create_Chat_Scr()
 {
     g_chat_ctrl->scr_chat = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(g_chat_ctrl->scr_chat, lv_color_hex(0xC7EDCC), LV_STATE_DEFAULT);
-
+    
     // 20250930修改：聊天内容区域用lv_textarea（支持滚动）替代lv_label
     lv_obj_t *chat_content = lv_textarea_create(g_chat_ctrl->scr_chat);
     lv_obj_set_size(chat_content, 300, 300);
@@ -944,7 +986,9 @@ static void Create_Chat_Scr()
 
     // 20250930修改：在 LVGL v8.2 中实现只读效果的方法
     lv_textarea_set_one_line(chat_content, false); // 允许换行
-    lv_obj_clear_flag(chat_content, LV_OBJ_FLAG_CLICKABLE); // 只读，禁用点击
+    lv_obj_set_scrollbar_mode(chat_content, LV_SCROLLBAR_MODE_AUTO); // 20251010新增：自动显示滚动条
+    lv_obj_add_flag(chat_content, LV_OBJ_FLAG_SCROLLABLE); // 20251010新增修改：启用滚动功能
+
     lv_obj_add_flag(chat_content, LV_OBJ_FLAG_EVENT_BUBBLE); // 事件冒泡
 
     lv_textarea_set_text(chat_content, "聊天内容..."); // 20250930修改：初始提示文本
@@ -1037,23 +1081,28 @@ static void Handle_Server_Msg(NetMsg *msg)
             else if(strcmp(msg->content, "login") == 0 || strlen(msg->content) == 0)
             {
                 // 20250930新增：打印完整ACK数据，确认进入登录处理分支。是否收到正确的result和账号
-                printf("客户端收到登录ACK：type=%d, content=%s（允许为空）, result=%d, account=%s\n\n",
-                    msg->type, msg->content, msg->user.port, msg->user.account);
+                printf("客户端收到登录ACK：result=%d，账号=%s，密码=%s\n", 
+                       msg->user.port, msg->user.account, msg->user.password); // 20251010新增调试日志
 
                 if(msg->user.port == 1) 
                 { // ACK=1成功。无论content是否为空，均判定登录成功（容错处理）
                     strncpy(g_chat_ctrl->cur_account, msg->user.account, 31);
                     printf("客户端：登录成功，账号：%s\n\n", g_chat_ctrl->cur_account);
 
+                    // 20251010新增：保存账号，下次免登录
+                    strncpy(g_saved_cur_account, msg->user.account, sizeof(g_saved_cur_account)-1); 
+
                     // 20251009新增大改：1. 强制重建好友界面（彻底解决初始化残留问题）
                     if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
                         lv_obj_del(g_chat_ctrl->scr_friend); // 删除旧界面
                     }
                     Create_Friend_Scr(); // 重新创建好友界面
-                    if(!g_chat_ctrl->scr_friend || !lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
-                        lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "登录成功，好友界面重建失败");
-                        printf("客户端：好友界面重建失败，无法切换\n");
-                        break;
+
+                    // 20251010新增：强制切换到好友列表（核心修改）
+                    if(g_chat_ctrl->scr_friend && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+                        lv_scr_load(g_chat_ctrl->scr_friend);
+                        lv_refr_now(lv_disp_get_default()); // 强制刷新LVGL界面
+                        printf("登录成功：已切换到好友列表，账号=%s\n", g_chat_ctrl->cur_account);
                     }
                 
                     // 2. 强制切换界面并刷新（LVGL8.2必须双重刷新）
@@ -1337,12 +1386,28 @@ static void *Recv_Server_Msg(void *arg)
                 free(msg);
             }
             pthread_mutex_unlock(&msg_mutex);
-        } else if(ret == 0) {
-            // ret=0：服务器主动关闭连接
+        } 
+
+        else if(ret == 0) {
+            // ret=0：服务器主动关闭连接。服务器断开连接：更新UI提示
             printf("Recv_Server_Msg：服务器断开连接（ret=0）\n\n");
+
+            // 20251009新增：主线程更新提示标签（登录界面或好友列表）修复客户端崩溃
+            if (g_chat_ctrl && lv_obj_is_valid(g_chat_ctrl->scr_login)) {
+                lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_login, 0), "服务器断开连接，请重新连接");
+            } else if (g_chat_ctrl && lv_obj_is_valid(g_chat_ctrl->scr_friend)) {
+                lv_label_set_text(lv_obj_get_child(g_chat_ctrl->scr_friend, 0), "服务器断开连接，请重新进入");
+            }
             free(msg);
+            // 20251009新增：关闭socket，避免后续发送错误
+            if (g_chat_ctrl->sockfd >= 0) {
+                close(g_chat_ctrl->sockfd);
+                g_chat_ctrl->sockfd = -1;
+            }
             break;
-        } else { // ret == -1
+        } 
+        
+        else { // ret == -1
             // 仅致命错误退出，EINTR（信号中断）或临时错误可重试
             if(errno == EINTR || errno == ETIMEDOUT) {
                 printf("Recv_Server_Msg：recv被信号中断/超时（errno=%d），重试\n", errno);
